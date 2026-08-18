@@ -23,10 +23,10 @@ public class CommitPullRequestEntity {
     @Column(name = "pr_number", nullable = false)
     private int prNumber;
 
-    @Column(name = "pr_title", nullable = false)
+    @Column(name = "pr_title", nullable = false, columnDefinition = "text")
     private String prTitle;
 
-    @Column(name = "pr_url", nullable = false)
+    @Column(name = "pr_url", nullable = false, columnDefinition = "text")
     private String prUrl;
 
     @Column(name = "pr_state", nullable = false)

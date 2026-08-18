@@ -22,10 +22,10 @@ public class CommitIssueEntity {
     @Column(name = "issue_number", nullable = false)
     private int issueNumber;
 
-    @Column(name = "issue_title", nullable = false)
+    @Column(name = "issue_title", nullable = false, columnDefinition = "text")
     private String issueTitle;
 
-    @Column(name = "issue_url", nullable = false)
+    @Column(name = "issue_url", nullable = false, columnDefinition = "text")
     private String issueUrl;
 
     @Column(name = "issue_state", nullable = false)
@@ -128,4 +128,3 @@ public class CommitIssueEntity {
         return labelCount;
     }
 }
-

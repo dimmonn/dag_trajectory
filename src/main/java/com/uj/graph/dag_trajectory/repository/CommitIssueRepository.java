@@ -9,4 +9,5 @@ import org.springframework.stereotype.Repository;
 public interface CommitIssueRepository extends JpaRepository<CommitIssueEntity, String> {
     List<CommitIssueEntity> findByCommitHashAndProjectRef(String commitHash, String projectRef);
     List<CommitIssueEntity> findByProjectRef(String projectRef);
+    boolean existsByProjectRefAndCommitHashAndIssueNumber(String projectRef, String commitHash, int issueNumber);
 }

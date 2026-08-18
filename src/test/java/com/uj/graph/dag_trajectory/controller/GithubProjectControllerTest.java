@@ -5,9 +5,9 @@ import com.uj.graph.dag_trajectory.model.CommitNode;
 import com.uj.graph.dag_trajectory.model.GithubProjectAnalysis;
 import com.uj.graph.dag_trajectory.model.GithubProjectGraphRefRequest;
 import com.uj.graph.dag_trajectory.model.GithubProjectRequest;
+import com.uj.graph.dag_trajectory.repository.CommitEntityRepository;
 import com.uj.graph.dag_trajectory.service.GithubProjectAnalysisService;
 import com.uj.graph.dag_trajectory.service.CommitMetadataService;
-import com.uj.graph.dag_trajectory.service.BatchProgressService;
 import java.time.Instant;
 import java.util.List;
 import org.junit.jupiter.api.Test;
@@ -20,14 +20,14 @@ class GithubProjectControllerTest {
     @Test
     void analyzesSubmittedProjects() {
         var metadataServiceMock = mock(CommitMetadataService.class);
-        var progressServiceMock = mock(BatchProgressService.class);
+        var commitRepositoryMock = mock(CommitEntityRepository.class);
         var controller = new GithubProjectController(new GithubProjectAnalysisService(
                 new com.uj.graph.dag_trajectory.service.CommitGraphMetricsCalculator(),
                 new StubGraphStore(),
                 null,
                 null,
                 metadataServiceMock,
-                progressServiceMock) {
+                commitRepositoryMock) {
             @Override
             public List<GithubProjectAnalysis> analyze(List<GithubProjectRequest> projects) {
                 return List.of(new GithubProjectAnalysis(
@@ -48,14 +48,14 @@ class GithubProjectControllerTest {
     @Test
     void analyzesSubgraphByGraphRef() {
         var metadataServiceMock = mock(CommitMetadataService.class);
-        var progressServiceMock = mock(BatchProgressService.class);
+        var commitRepositoryMock = mock(CommitEntityRepository.class);
         var controller = new GithubProjectController(new GithubProjectAnalysisService(
                 new com.uj.graph.dag_trajectory.service.CommitGraphMetricsCalculator(),
                 new StubGraphStore(),
                 null,
                 null,
                 metadataServiceMock,
-                progressServiceMock) {
+                commitRepositoryMock) {
             @Override
             public GithubProjectAnalysis subgraph(String projectRef, Instant cutoffAt) {
                 return new GithubProjectAnalysis(

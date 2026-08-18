@@ -3,6 +3,7 @@ package com.uj.graph.dag_trajectory.service;
 import com.uj.graph.dag_trajectory.model.CommitMetrics;
 import com.uj.graph.dag_trajectory.model.CommitNode;
 import com.uj.graph.dag_trajectory.model.GithubProjectAnalysis;
+import com.uj.graph.dag_trajectory.repository.CommitEntityRepository;
 import java.time.Instant;
 import java.util.List;
 import java.util.Optional;
@@ -27,8 +28,8 @@ class GithubProjectAnalysisServiceTest {
                         new CommitNode("c", List.of("b"), Instant.parse("2026-08-09T12:00:00Z").getEpochSecond(), metrics())));
 
         var metadataServiceMock = mock(CommitMetadataService.class);
-        var progressServiceMock = mock(BatchProgressService.class);
-        var service = new GithubProjectAnalysisService(new CommitGraphMetricsCalculator(), new StubGraphStore(graph), null, null, metadataServiceMock, progressServiceMock);
+        var commitRepositoryMock = mock(CommitEntityRepository.class);
+        var service = new GithubProjectAnalysisService(new CommitGraphMetricsCalculator(), new StubGraphStore(graph), null, null, metadataServiceMock, commitRepositoryMock);
 
         var result = service.subgraph("ref-1", Instant.parse("2026-08-09T11:30:00Z"));
 

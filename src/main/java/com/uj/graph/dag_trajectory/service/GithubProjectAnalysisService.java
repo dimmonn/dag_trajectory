@@ -1,72 +1,91 @@
 package com.uj.graph.dag_trajectory.service;
 
+import com.uj.graph.dag_trajectory.entity.CommitEntity;
 import com.uj.graph.dag_trajectory.model.CommitNode;
 import com.uj.graph.dag_trajectory.model.GithubProjectAnalysis;
 import com.uj.graph.dag_trajectory.model.GithubProjectRequest;
+import com.uj.graph.dag_trajectory.repository.CommitEntityRepository;
 import java.time.Instant;
-import java.util.UUID;
 import java.util.List;
+import java.util.UUID;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
 
 @Service
 public class GithubProjectAnalysisService {
+    private static final Logger log = LoggerFactory.getLogger(GithubProjectAnalysisService.class);
 
     private final CommitGraphMetricsCalculator metricsCalculator;
     private final GithubProjectGraphStore graphStore;
     private final GitRepositoryCloner repositoryCloner;
     private final CommitDagBuilder commitDagBuilder;
     private final CommitMetadataService metadataService;
-    private final BatchProgressService progressService;
+    private final CommitEntityRepository commitRepository;
 
-    public GithubProjectAnalysisService(CommitGraphMetricsCalculator metricsCalculator, GithubProjectGraphStore graphStore, GitRepositoryCloner repositoryCloner, CommitDagBuilder commitDagBuilder, CommitMetadataService metadataService, BatchProgressService progressService) {
+    public GithubProjectAnalysisService(CommitGraphMetricsCalculator metricsCalculator, GithubProjectGraphStore graphStore, GitRepositoryCloner repositoryCloner, CommitDagBuilder commitDagBuilder, CommitMetadataService metadataService, CommitEntityRepository commitRepository) {
         this.metricsCalculator = metricsCalculator;
         this.graphStore = graphStore;
         this.repositoryCloner = repositoryCloner;
         this.commitDagBuilder = commitDagBuilder;
         this.metadataService = metadataService;
-        this.progressService = progressService;
+        this.commitRepository = commitRepository;
     }
 
     public List<GithubProjectAnalysis> analyze(List<GithubProjectRequest> projects) {
-        String batchId = UUID.randomUUID().toString();
-        progressService.startBatch(batchId, "Analyzing GitHub Projects", projects.size());
-        
-        try {
-            List<GithubProjectAnalysis> results = projects.stream()
-                    .map(project -> {
-                        String projectRef = UUID.randomUUID().toString();
-                        progressService.recordProgress(1, "Cloning: " + project.owner() + "/" + project.name());
-                        
-                        GithubProjectAnalysis analysis = commitDagBuilder.build(projectRef, project, repositoryCloner.clone(project));
-                        graphStore.save(analysis);
-                        
-                        int commitCount = analysis.commits().size();
-                        progressService.recordProgress(1, "Building DAG: " + commitCount + " commits");
-                        
-                        // Fetch and save GitHub metadata for each commit
-                        for (int i = 0; i < analysis.commits().size(); i++) {
-                            CommitNode commit = analysis.commits().get(i);
-                            metadataService.fetchAndSaveMetadataForCommit(project.owner(), project.name(), commit.hash(), projectRef);
-                            
-                            if ((i + 1) % 5 == 0) {
-                                progressService.recordProgress(0, "Fetched metadata for " + (i + 1) + "/" + commitCount + " commits");
-                            }
-                        }
-                        
-                        progressService.recordProgress(0, "Completed: " + project.owner() + "/" + project.name());
-                        return analysis;
-                    })
-                    .toList();
-            
-            progressService.completeBatch();
-            return results;
-        } catch (Exception e) {
-            progressService.cancelBatch("Error: " + e.getMessage());
-            throw e;
-        }
+        long batchStartedAt = System.currentTimeMillis();
+        log.info("Starting project analysis batch: projects={}", projects.size());
+        List<GithubProjectAnalysis> result = projects.stream()
+            .map(project -> {
+                String projectRef = UUID.randomUUID().toString();
+                String projectName = project.owner() + "/" + project.name();
+                long startedAt = System.currentTimeMillis();
+                log.info("Analyzing project: projectRef={}, project={}", projectRef, projectName);
+
+                GithubProjectAnalysis analysis = commitDagBuilder.build(projectRef, project, repositoryCloner.clone(project));
+                graphStore.save(analysis);
+                int commitCount = analysis.commits().size();
+                log.info("Graph built and saved: projectRef={}, commits={}", projectRef, commitCount);
+
+                int processed = 0;
+                for (CommitNode commit : analysis.commits()) {
+                    upsertCommit(projectRef, commit);
+                    processed++;
+                    if (processed % 1000 == 0) {
+                        log.info("Commit persist progress: projectRef={}, processedCommits={}/{}", projectRef, processed, commitCount);
+                    }
+                }
+                var mappingResult = metadataService.fetchAndSaveProjectMappings(project.owner(), project.name(), projectRef);
+                int projectIssueCount = metadataService.fetchAndSaveProjectIssues(project.owner(), project.name(), projectRef);
+                var commitMetadataResult =
+                        metadataService.fetchAndSaveProjectCommitMetadata(project.owner(), project.name(), projectRef);
+                int releaseCount = metadataService.fetchAndSaveReleasesForProject(project.owner(), project.name(), projectRef);
+
+                long durationMillis = System.currentTimeMillis() - startedAt;
+                log.info("Project analysis completed: projectRef={}, project={}, commits={}, prs={}, issues={}, commitPrLinks={}, prIssueLinks={}, commitIssueLinks={}, comments={}, workflowRuns={}, releases={}, durationMs={}",
+                        projectRef,
+                        projectName,
+                        commitCount,
+                        mappingResult.prCount(),
+                        projectIssueCount,
+                        mappingResult.commitPrLinkCount(),
+                        mappingResult.prIssueLinkCount(),
+                        mappingResult.commitIssueLinkCount(),
+                        commitMetadataResult.commentCount(),
+                        commitMetadataResult.workflowRunCount(),
+                        releaseCount,
+                        durationMillis);
+                return analysis;
+            })
+            .toList();
+        long batchDurationMillis = System.currentTimeMillis() - batchStartedAt;
+        log.info("Project analysis batch completed: projects={}, durationMs={}", result.size(), batchDurationMillis);
+        return result;
     }
 
     public GithubProjectAnalysis subgraph(String projectRef, Instant cutoffAt) {
+        long startedAt = System.currentTimeMillis();
+        log.info("Building subgraph: sourceProjectRef={}, cutoffAt={}", projectRef, cutoffAt);
         GithubProjectAnalysis graph = graphStore.findByRef(projectRef)
                 .orElseThrow(() -> new IllegalArgumentException("Unknown project ref: " + projectRef));
         List<CommitGraphMetricsCalculator.CommitSnapshot> snapshots = graph.commits().stream()
@@ -77,8 +96,26 @@ public class GithubProjectAnalysisService {
         String subgraphRef = UUID.randomUUID().toString();
         GithubProjectAnalysis subgraph = new GithubProjectAnalysis(subgraphRef, graph.owner(), graph.name(), graph.clonedPath(), commits);
         graphStore.save(subgraph, graph.projectRef());
+        long durationMillis = System.currentTimeMillis() - startedAt;
+        log.info("Subgraph built and saved: subgraphRef={}, sourceProjectRef={}, originalCommits={}, subgraphCommits={}, durationMs={}",
+                subgraphRef, projectRef, snapshots.size(), commits.size(), durationMillis);
         return subgraph;
     }
+
+    private void upsertCommit(String projectRef, CommitNode commit) {
+        CommitEntity entity = commitRepository.findByProjectRefAndCommitHash(projectRef, commit.hash())
+                .orElseGet(() -> new CommitEntity(
+                        UUID.randomUUID().toString(),
+                        projectRef,
+                        commit.hash(),
+                        commit.authoredAtEpochSecond(),
+                        commit.metrics().parentCount(),
+                        commit.metrics().mergeParentCount(),
+                        commit.metrics().mergeParentCount() > 0));
+        entity.setAuthoredAtEpochSecond(commit.authoredAtEpochSecond());
+        entity.setParentCount(commit.metrics().parentCount());
+        entity.setMergeParentCount(commit.metrics().mergeParentCount());
+        entity.setMerge(commit.metrics().mergeParentCount() > 0);
+        commitRepository.save(entity);
+    }
 }
-
-

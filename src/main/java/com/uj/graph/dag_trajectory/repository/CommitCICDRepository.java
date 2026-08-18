@@ -9,4 +9,5 @@ import org.springframework.stereotype.Repository;
 public interface CommitCICDRepository extends JpaRepository<CommitCICDEntity, String> {
     List<CommitCICDEntity> findByCommitHashAndProjectRef(String commitHash, String projectRef);
     List<CommitCICDEntity> findByProjectRef(String projectRef);
+    boolean existsByProjectRefAndCommitHashAndWorkflowUrl(String projectRef, String commitHash, String workflowUrl);
 }

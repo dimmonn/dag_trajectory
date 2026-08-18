@@ -9,4 +9,5 @@ import org.springframework.stereotype.Repository;
 public interface CommitPullRequestRepository extends JpaRepository<CommitPullRequestEntity, String> {
     List<CommitPullRequestEntity> findByCommitHashAndProjectRef(String commitHash, String projectRef);
     List<CommitPullRequestEntity> findByProjectRef(String projectRef);
+    boolean existsByProjectRefAndCommitHashAndPrNumber(String projectRef, String commitHash, int prNumber);
 }

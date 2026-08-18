@@ -9,4 +9,5 @@ import org.springframework.stereotype.Repository;
 public interface CommitCommentRepository extends JpaRepository<CommitCommentEntity, String> {
     List<CommitCommentEntity> findByCommitHashAndProjectRef(String commitHash, String projectRef);
     List<CommitCommentEntity> findByProjectRef(String projectRef);
+    boolean existsByProjectRefAndCommitHashAndCommentUrl(String projectRef, String commitHash, String commentUrl);
 }
