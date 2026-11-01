@@ -5,6 +5,7 @@ import com.uj.graph.dag_trajectory.model.GithubProjectAnalysis;
 import com.uj.graph.dag_trajectory.model.GithubProjectRequest;
 import java.io.IOException;
 import java.nio.file.Path;
+import java.time.Instant;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
@@ -30,7 +31,10 @@ public class CommitDagBuilder {
                 for (RevCommit parent : commit.getParents()) {
                     parents.add(parent.getName());
                 }
-                snapshots.add(new CommitGraphMetricsCalculator.CommitSnapshot(commit.getName(), parents, commit.getCommitterIdent().getWhen().toInstant()));
+                snapshots.add(new CommitGraphMetricsCalculator.CommitSnapshot(
+                        commit.getName(),
+                        parents,
+                        Instant.ofEpochSecond(commit.getCommitTime())));
             }
             List<CommitNode> commits = metricsCalculator.buildNodes(snapshots);
             return new GithubProjectAnalysis(projectRef, project.owner(), project.name(), clonedRepository.toString(), commits);
