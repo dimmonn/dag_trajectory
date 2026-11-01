@@ -70,8 +70,9 @@ class GithubProjectAnalysisServiceTest {
         when(cloner.resolveUpstream(fork)).thenReturn(upstream);
         when(cloner.resolveUpstream(upstream)).thenReturn(upstream);
         when(cloner.clone(upstream)).thenReturn(Path.of("/tmp/repo"));
+        when(cloner.getUpstreamDefaultBranch(upstream)).thenReturn("main");
         var dagBuilder = mock(CommitDagBuilder.class);
-        when(dagBuilder.build(org.mockito.ArgumentMatchers.anyString(), org.mockito.ArgumentMatchers.eq(upstream), org.mockito.ArgumentMatchers.any()))
+        when(dagBuilder.build(org.mockito.ArgumentMatchers.anyString(), org.mockito.ArgumentMatchers.eq(upstream), org.mockito.ArgumentMatchers.any(), org.mockito.ArgumentMatchers.eq("main")))
                 .thenReturn(graph);
         var metadataService = mock(CommitMetadataService.class);
         when(metadataService.fetchAndSaveProjectMappings(
@@ -99,7 +100,7 @@ class GithubProjectAnalysisServiceTest {
         assertEquals("original", result.getFirst().owner());
         assertEquals("project", result.getFirst().name());
         verify(cloner).clone(upstream);
-        verify(dagBuilder).build(org.mockito.ArgumentMatchers.anyString(), org.mockito.ArgumentMatchers.eq(upstream), org.mockito.ArgumentMatchers.any());
+        verify(dagBuilder).build(org.mockito.ArgumentMatchers.anyString(), org.mockito.ArgumentMatchers.eq(upstream), org.mockito.ArgumentMatchers.any(), org.mockito.ArgumentMatchers.eq("main"));
         verify(metadataService).fetchAndSaveProjectMappings(
                 org.mockito.ArgumentMatchers.eq("original"),
                 org.mockito.ArgumentMatchers.eq("project"),
