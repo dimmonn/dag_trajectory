@@ -58,7 +58,8 @@ public class GitHubGraphQLClient {
                 response.path("name").asText(repo),
                 response.path("fork").asBoolean(false),
                 repositoryIdentity(source),
-                repositoryIdentity(parent));
+                repositoryIdentity(parent),
+                response.path("default_branch").asText(null));
     }
 
     public List<PullRequest> getPullRequestsForCommit(String owner, String repo, String commitOid) {
@@ -906,7 +907,11 @@ public class GitHubGraphQLClient {
             String name,
             boolean fork,
             RepositoryIdentity source,
-            RepositoryIdentity parent) {
+            RepositoryIdentity parent,
+            String defaultBranch) {
+        public RepositoryMetadata(String owner, String name, boolean fork, RepositoryIdentity source, RepositoryIdentity parent) {
+            this(owner, name, fork, source, parent, null);
+        }
         public RepositoryIdentity upstream() {
             if (!fork) {
                 return new RepositoryIdentity(owner, name);
