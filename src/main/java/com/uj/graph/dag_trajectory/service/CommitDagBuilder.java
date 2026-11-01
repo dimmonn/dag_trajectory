@@ -24,15 +24,25 @@ public class CommitDagBuilder {
     }
 
     public GithubProjectAnalysis build(String projectRef, GithubProjectRequest project, Path clonedRepository) {
+        return build(projectRef, project, clonedRepository, null);
+    }
+
+    public GithubProjectAnalysis build(String projectRef, GithubProjectRequest project, Path clonedRepository, String defaultBranch) {
         try (Git git = Git.open(clonedRepository.toFile())) {
             List<CommitGraphMetricsCalculator.CommitSnapshot> snapshots = new ArrayList<>();
-            ObjectId defaultBranchHeadId = git.getRepository().resolve(
-                    Constants.R_REMOTES + Constants.DEFAULT_REMOTE_NAME + "/" + Constants.HEAD);
-            if (defaultBranchHeadId == null) {
-                defaultBranchHeadId = git.getRepository().resolve(Constants.HEAD);
-            }
-            if (defaultBranchHeadId == null) {
-                throw new IllegalStateException("Repository has no default-branch HEAD: " + clonedRepository);
+            ObjectId defaultBranchHeadId;
+            if (defaultBranch != null && !defaultBranch.isBlank()) {
+                String branchRef = Constants.R_REMOTES + Constants.DEFAULT_REMOTE_NAME + "/" + defaultBranch;
+                defaultBranchHeadId = git.getRepository().resolve(branchRef);
+                if (defaultBranchHeadId == null) {
+                    throw new IllegalStateException("Upstream default branch '" + defaultBranch
+                            + "' is missing from clone " + clonedRepository);
+                }
+            } else {
+                defaultBranchHeadId = git.getRepository().resolve(
+                        Constants.R_REMOTES + Constants.DEFAULT_REMOTE_NAME + "/" + Constants.HEAD);
+                if (defaultBranchHeadId == null) defaultBranchHeadId = git.getRepository().resolve(Constants.HEAD);
+                if (defaultBranchHeadId == null) throw new IllegalStateException("Repository has no default-branch HEAD: " + clonedRepository);
             }
             RevCommit defaultBranchHead = git.getRepository().parseCommit(defaultBranchHeadId);
             Iterable<RevCommit> log = git.log().add(defaultBranchHead).call();
