@@ -37,6 +37,12 @@ public class GitRepositoryCloner {
         return new GithubProjectRequest(upstream.owner(), upstream.name());
     }
 
+    public void requireGithubToken() {
+        if (!graphQLClient.isConfigured()) {
+            throw new IllegalStateException("GitHub token is required for complete issue and pull-request metadata collection. Configure github.token.");
+        }
+    }
+
     public String getUpstreamDefaultBranch(GithubProjectRequest upstream) {
         GitHubGraphQLClient.RepositoryMetadata metadata =
                 graphQLClient.getRepositoryMetadata(upstream.owner(), upstream.name());
