@@ -38,6 +38,7 @@ public class GithubProjectAnalysisService {
     }
 
     public List<GithubProjectAnalysis> analyze(List<GithubProjectRequest> projects) {
+        repositoryCloner.requireGithubToken();
         long batchStartedAt = System.currentTimeMillis();
         log.info("Starting project analysis batch: projects={}", projects.size());
         Map<String, GithubProjectRequest> upstreamProjects = new LinkedHashMap<>();
