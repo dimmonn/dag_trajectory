@@ -8,8 +8,9 @@ import java.nio.file.Path;
 import java.time.Instant;
 import java.util.ArrayList;
 import java.util.List;
-import java.util.Map;
 import org.eclipse.jgit.api.Git;
+import org.eclipse.jgit.lib.Constants;
+import org.eclipse.jgit.lib.ObjectId;
 import org.eclipse.jgit.revwalk.RevCommit;
 import org.springframework.stereotype.Service;
 
@@ -25,7 +26,16 @@ public class CommitDagBuilder {
     public GithubProjectAnalysis build(String projectRef, GithubProjectRequest project, Path clonedRepository) {
         try (Git git = Git.open(clonedRepository.toFile())) {
             List<CommitGraphMetricsCalculator.CommitSnapshot> snapshots = new ArrayList<>();
-            Iterable<RevCommit> log = git.log().all().call();
+            ObjectId defaultBranchHeadId = git.getRepository().resolve(
+                    Constants.R_REMOTES + Constants.DEFAULT_REMOTE_NAME + "/" + Constants.HEAD);
+            if (defaultBranchHeadId == null) {
+                defaultBranchHeadId = git.getRepository().resolve(Constants.HEAD);
+            }
+            if (defaultBranchHeadId == null) {
+                throw new IllegalStateException("Repository has no default-branch HEAD: " + clonedRepository);
+            }
+            RevCommit defaultBranchHead = git.getRepository().parseCommit(defaultBranchHeadId);
+            Iterable<RevCommit> log = git.log().add(defaultBranchHead).call();
             for (RevCommit commit : log) {
                 List<String> parents = new ArrayList<>();
                 for (RevCommit parent : commit.getParents()) {

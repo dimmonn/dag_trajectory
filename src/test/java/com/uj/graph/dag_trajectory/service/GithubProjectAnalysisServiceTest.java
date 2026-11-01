@@ -3,14 +3,20 @@ package com.uj.graph.dag_trajectory.service;
 import com.uj.graph.dag_trajectory.model.CommitMetrics;
 import com.uj.graph.dag_trajectory.model.CommitNode;
 import com.uj.graph.dag_trajectory.model.GithubProjectAnalysis;
+import com.uj.graph.dag_trajectory.model.GithubProjectRequest;
+import com.uj.graph.dag_trajectory.model.IssueLabelRefreshResult;
 import com.uj.graph.dag_trajectory.repository.CommitEntityRepository;
 import java.time.Instant;
 import java.util.List;
 import java.util.Optional;
+import java.nio.file.Path;
 import org.junit.jupiter.api.Test;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.mockito.ArgumentMatchers.anySet;
+import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.when;
 import static org.mockito.Mockito.mock;
 
 class GithubProjectAnalysisServiceTest {
@@ -38,6 +44,69 @@ class GithubProjectAnalysisServiceTest {
         assertEquals(0, result.commits().stream().filter(commit -> commit.hash().equals("b")).findFirst().orElseThrow().metrics().childCount());
     }
 
+    @Test
+    void refreshesLabelsForEveryRootProjectGraph() {
+        var graph = new GithubProjectAnalysis("ref-1", "octocat", "dag", "/tmp/repo", List.of());
+        var graphStore = new StubGraphStore(graph);
+        var metadataService = mock(CommitMetadataService.class);
+        when(metadataService.fetchAndSaveIssueLabels("octocat", "dag", "ref-1"))
+                .thenReturn(new IssueLabelRefreshResult(3, 5));
+        var service = new GithubProjectAnalysisService(
+                new CommitGraphMetricsCalculator(), graphStore, null, null, metadataService, mock(CommitEntityRepository.class));
+
+        var result = service.refreshIssueLabelsForAllProjects();
+
+        assertEquals(1, result.repositoriesProcessed());
+        assertEquals(3, result.issuesUpdated());
+        assertEquals(5, result.labelsStored());
+    }
+
+    @Test
+    void analyzesAnUpstreamOnlyOnceWhenBothForkAndUpstreamAreRequested() {
+        var fork = new GithubProjectRequest("contributor", "project-fork");
+        var upstream = new GithubProjectRequest("original", "project");
+        var graph = new GithubProjectAnalysis("ref-1", upstream.owner(), upstream.name(), "/tmp/repo", List.of());
+        var cloner = mock(GitRepositoryCloner.class);
+        when(cloner.resolveUpstream(fork)).thenReturn(upstream);
+        when(cloner.resolveUpstream(upstream)).thenReturn(upstream);
+        when(cloner.clone(upstream)).thenReturn(Path.of("/tmp/repo"));
+        var dagBuilder = mock(CommitDagBuilder.class);
+        when(dagBuilder.build(org.mockito.ArgumentMatchers.anyString(), org.mockito.ArgumentMatchers.eq(upstream), org.mockito.ArgumentMatchers.any()))
+                .thenReturn(graph);
+        var metadataService = mock(CommitMetadataService.class);
+        when(metadataService.fetchAndSaveProjectMappings(
+                org.mockito.ArgumentMatchers.anyString(),
+                org.mockito.ArgumentMatchers.anyString(),
+                org.mockito.ArgumentMatchers.anyString(),
+                anySet()))
+                .thenReturn(new CommitMetadataService.ProjectMappingPersistResult(0, 0, 0, 0));
+        when(metadataService.fetchAndSaveProjectCommitMetadata(
+                org.mockito.ArgumentMatchers.eq("original"),
+                org.mockito.ArgumentMatchers.eq("project"),
+                org.mockito.ArgumentMatchers.anyString()))
+                .thenReturn(new CommitMetadataService.ProjectCommitMetadataPersistResult(0, 0));
+        var service = new GithubProjectAnalysisService(
+                new CommitGraphMetricsCalculator(),
+                mock(GithubProjectGraphStore.class),
+                cloner,
+                dagBuilder,
+                metadataService,
+                mock(CommitEntityRepository.class));
+
+        var result = service.analyze(List.of(fork, upstream));
+
+        assertEquals(1, result.size());
+        assertEquals("original", result.getFirst().owner());
+        assertEquals("project", result.getFirst().name());
+        verify(cloner).clone(upstream);
+        verify(dagBuilder).build(org.mockito.ArgumentMatchers.anyString(), org.mockito.ArgumentMatchers.eq(upstream), org.mockito.ArgumentMatchers.any());
+        verify(metadataService).fetchAndSaveProjectMappings(
+                org.mockito.ArgumentMatchers.eq("original"),
+                org.mockito.ArgumentMatchers.eq("project"),
+                org.mockito.ArgumentMatchers.anyString(),
+                org.mockito.ArgumentMatchers.eq(java.util.Set.of()));
+    }
+
     private static final class StubGraphStore implements GithubProjectGraphStore {
         private final GithubProjectAnalysis graph;
 
@@ -58,6 +127,11 @@ class GithubProjectAnalysisServiceTest {
         @Override
         public Optional<GithubProjectAnalysis> findByRef(String projectRef) {
             return Optional.of(graph);
+        }
+
+        @Override
+        public List<GithubProjectAnalysis> findRootGraphs() {
+            return List.of(graph);
         }
     }
 

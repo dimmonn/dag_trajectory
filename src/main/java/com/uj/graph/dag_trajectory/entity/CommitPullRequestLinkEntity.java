@@ -36,4 +36,12 @@ public class CommitPullRequestLinkEntity {
         this.commit = commit;
         this.pullRequest = pullRequest;
     }
+
+    public CommitEntity getCommit() {
+        return commit;
+    }
+
+    public PullRequestEntity getPullRequest() {
+        return pullRequest;
+    }
 }

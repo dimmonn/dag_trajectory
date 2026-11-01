@@ -3,8 +3,11 @@ package com.uj.graph.dag_trajectory.controller;
 import com.uj.graph.dag_trajectory.model.GithubProjectAnalysis;
 import com.uj.graph.dag_trajectory.model.GithubProjectRequest;
 import com.uj.graph.dag_trajectory.model.GithubProjectGraphRefRequest;
+import com.uj.graph.dag_trajectory.model.IssueLabelRefreshResult;
+import com.uj.graph.dag_trajectory.model.AllIssueLabelsRefreshResult;
 import com.uj.graph.dag_trajectory.service.GithubProjectAnalysisService;
 import java.util.List;
+import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RestController;
@@ -26,5 +29,15 @@ public class GithubProjectController {
     @PostMapping("/github-projects/subgraph")
     public GithubProjectAnalysis analyzeSubgraph(@RequestBody GithubProjectGraphRefRequest request) {
         return analysisService.subgraph(request.projectRef(), request.cutoffAt());
+    }
+
+    @PostMapping("/github-projects/{projectRef}/labels")
+    public IssueLabelRefreshResult refreshIssueLabels(@PathVariable String projectRef) {
+        return analysisService.refreshIssueLabels(projectRef);
+    }
+
+    @PostMapping("/github-projects/labels")
+    public AllIssueLabelsRefreshResult refreshIssueLabelsForAllProjects() {
+        return analysisService.refreshIssueLabelsForAllProjects();
     }
 }

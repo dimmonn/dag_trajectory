@@ -5,6 +5,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.uj.graph.dag_trajectory.entity.ProjectGraphEntity;
 import com.uj.graph.dag_trajectory.model.GithubProjectAnalysis;
 import com.uj.graph.dag_trajectory.repository.ProjectGraphRepository;
+import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
 import org.springframework.stereotype.Service;
@@ -38,6 +39,13 @@ public class DatabaseGithubProjectGraphStore implements GithubProjectGraphStore 
     public Optional<GithubProjectAnalysis> findByRef(String projectRef) {
         return repository.findById(projectRef)
                 .map(entity -> readGraph(entity.getGraphJson()));
+    }
+
+    @Override
+    public List<GithubProjectAnalysis> findRootGraphs() {
+        return repository.findAllBySourceProjectRefIsNull().stream()
+                .map(entity -> readGraph(entity.getGraphJson()))
+                .toList();
     }
 
     private String writeGraph(GithubProjectAnalysis graph) {

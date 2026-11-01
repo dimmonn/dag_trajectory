@@ -16,9 +16,25 @@ public class GitRepositoryCloner {
     private static final Logger log = LoggerFactory.getLogger(GitRepositoryCloner.class);
     private static final String GIT_DIR_NAME = ".git";
     private final Path cloneRoot;
+    private final GitHubGraphQLClient graphQLClient;
 
-    public GitRepositoryCloner(@Value("${github.clone.root:${user.home}/.dag_trajectory/repos}") String cloneRoot) {
+    public GitRepositoryCloner(
+            @Value("${github.clone.root:${user.home}/.dag_trajectory/repos}") String cloneRoot,
+            GitHubGraphQLClient graphQLClient) {
         this.cloneRoot = Path.of(cloneRoot);
+        this.graphQLClient = graphQLClient;
+    }
+
+    public GithubProjectRequest resolveUpstream(GithubProjectRequest project) {
+        GitHubGraphQLClient.RepositoryMetadata metadata =
+                graphQLClient.getRepositoryMetadata(project.owner(), project.name());
+        GitHubGraphQLClient.RepositoryIdentity upstream = metadata.upstream();
+        if (upstream == null) {
+            throw new IllegalStateException(
+                    "GitHub marks " + project.owner() + "/" + project.name()
+                            + " as a fork but provides neither source nor parent repository metadata");
+        }
+        return new GithubProjectRequest(upstream.owner(), upstream.name());
     }
 
     public Path clone(GithubProjectRequest project) {
@@ -27,6 +43,9 @@ public class GitRepositoryCloner {
         try {
             if (Files.isDirectory(cloneDirectory.resolve(GIT_DIR_NAME))) {
                 log.info("Reusing existing clone for {} at {}", projectName, cloneDirectory);
+                try (Git git = Git.open(cloneDirectory.toFile())) {
+                    git.fetch().setRemote("origin").call();
+                }
                 return cloneDirectory;
             }
             if (Files.exists(cloneDirectory)) {

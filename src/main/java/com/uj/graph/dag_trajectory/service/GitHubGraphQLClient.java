@@ -44,6 +44,23 @@ public class GitHubGraphQLClient {
         this.httpClient = HttpClient.newHttpClient();
     }
 
+    public boolean isConfigured() {
+        return githubToken != null && !githubToken.isBlank();
+    }
+
+    public RepositoryMetadata getRepositoryMetadata(String owner, String repo) {
+        JsonNode response = executeRestGet(
+                "https://api.github.com/repos/%s/%s".formatted(owner, repo));
+        JsonNode source = response.path("source");
+        JsonNode parent = response.path("parent");
+        return new RepositoryMetadata(
+                response.path("owner").path("login").asText(owner),
+                response.path("name").asText(repo),
+                response.path("fork").asBoolean(false),
+                repositoryIdentity(source),
+                repositoryIdentity(parent));
+    }
+
     public List<PullRequest> getPullRequestsForCommit(String owner, String repo, String commitOid) {
         if (githubToken == null || githubToken.isBlank()) {
             return List.of();
@@ -126,7 +143,7 @@ public class GitHubGraphQLClient {
             String query = """
                     query {
                       repository(owner: "%s", name: "%s") {
-                        pullRequests(first: %d%s, orderBy: {field: CREATED_AT, direction: ASC}) {
+                        pullRequests(first: %d%s, states: [OPEN, CLOSED, MERGED], orderBy: {field: CREATED_AT, direction: ASC}) {
                           pageInfo {
                             hasNextPage
                             endCursor
@@ -138,12 +155,18 @@ public class GitHubGraphQLClient {
                             state
                             createdAt
                             mergedAt
+                            merged
+                            mergeCommit { oid }
                             reviews(first: 100) { totalCount }
                             comments { totalCount }
                             additions
                             deletions
                             changedFiles
                             closingIssuesReferences(first: %d) {
+                              pageInfo {
+                                hasNextPage
+                                endCursor
+                              }
                               nodes {
                                 number
                                 title
@@ -199,6 +222,8 @@ public class GitHubGraphQLClient {
                             node.get("state").asText(),
                             node.get("createdAt").asText(),
                             node.get("mergedAt").asText(null),
+                            node.path("merged").asBoolean(false),
+                            node.at("/mergeCommit/oid").asText(null),
                             node.at("/reviews/totalCount").asInt(0),
                             node.at("/comments/totalCount").asInt(0),
                             node.get("additions").asInt(0),
@@ -239,7 +264,10 @@ public class GitHubGraphQLClient {
                             createdAt
                             closedAt
                             comments { totalCount }
-                            labels(first: 10) { totalCount }
+                            labels(first: 100) {
+                              nodes { name }
+                              pageInfo { hasNextPage endCursor }
+                            }
                           }
                         }
                       }
@@ -258,7 +286,14 @@ public class GitHubGraphQLClient {
                             node.path("createdAt").asText(null),
                             node.path("closedAt").asText(null),
                             node.at("/comments/totalCount").asInt(0),
-                            node.at("/labels/totalCount").asInt(0)));
+                            parseLabelNames(node.at("/labels/nodes"),
+                                    node.at("/labels/pageInfo/hasNextPage").asBoolean(false)
+                                            ? getAdditionalIssueLabels(
+                                                    owner,
+                                                    repo,
+                                                    node.path("number").asInt(),
+                                                    node.at("/labels/pageInfo/endCursor").asText(null))
+                                            : List.of())));
                 }
             }
             hasNextPage = issueRoot.at("/pageInfo/hasNextPage").asBoolean(false);
@@ -347,13 +382,15 @@ public class GitHubGraphQLClient {
         while (true) {
             attempt++;
             try {
-                HttpRequest request = HttpRequest.newBuilder()
+                HttpRequest.Builder requestBuilder = HttpRequest.newBuilder()
                         .uri(URI.create(url))
                         .timeout(REQUEST_TIMEOUT)
-                        .header("Authorization", "Bearer " + githubToken)
                         .header("Accept", "application/vnd.github+json")
-                        .GET()
-                        .build();
+                        .GET();
+                if (isConfigured()) {
+                    requestBuilder.header("Authorization", "Bearer " + githubToken);
+                }
+                HttpRequest request = requestBuilder.build();
                 HttpResponse<String> response = httpClient.send(request, HttpResponse.BodyHandlers.ofString());
                 int statusCode = response.statusCode();
                 if (statusCode == 200) {
@@ -530,6 +567,32 @@ public class GitHubGraphQLClient {
             cursor = commitsRoot.at("/pageInfo/endCursor").asText(null);
         }
         return commitHashes;
+    }
+
+    private List<String> getAdditionalIssueLabels(String owner, String repo, int issueNumber, String initialCursor) {
+        List<String> labels = new ArrayList<>();
+        String cursor = initialCursor;
+        boolean hasNextPage = true;
+        while (hasNextPage && cursor != null && !cursor.isBlank()) {
+            String query = """
+                    query {
+                      repository(owner: "%s", name: "%s") {
+                        issue(number: %d) {
+                          labels(first: 100, after: "%s") {
+                            nodes { name }
+                            pageInfo { hasNextPage endCursor }
+                          }
+                        }
+                      }
+                    }
+                    """.formatted(owner, repo, issueNumber, cursor);
+            JsonNode response = executeQuery(query);
+            JsonNode labelsRoot = response.at("/data/repository/issue/labels");
+            labels.addAll(parseLabelNames(labelsRoot.at("/nodes"), List.of()));
+            hasNextPage = labelsRoot.at("/pageInfo/hasNextPage").asBoolean(false);
+            cursor = labelsRoot.at("/pageInfo/endCursor").asText(null);
+        }
+        return labels;
     }
 
     private List<LinkedIssue> getAdditionalPullRequestLinkedIssues(
@@ -767,6 +830,7 @@ public class GitHubGraphQLClient {
         if (!nodes.isArray()) {
             return linkedIssues;
         }
+
         for (JsonNode node : nodes) {
             if (node.get("number") == null) {
                 continue;
@@ -782,6 +846,29 @@ public class GitHubGraphQLClient {
                     node.at("/labels/totalCount").asInt(0)));
         }
         return linkedIssues;
+    }
+
+    private RepositoryIdentity repositoryIdentity(JsonNode repositoryNode) {
+        String owner = repositoryNode.path("owner").path("login").asText(null);
+        String name = repositoryNode.path("name").asText(null);
+        if (owner == null || owner.isBlank() || name == null || name.isBlank()) {
+            return null;
+        }
+        return new RepositoryIdentity(owner, name);
+    }
+
+    private List<String> parseLabelNames(JsonNode nodes, List<String> additionalNames) {
+        List<String> names = new ArrayList<>();
+        if (nodes.isArray()) {
+            for (JsonNode node : nodes) {
+                String name = node.path("name").asText(null);
+                if (name != null && !name.isBlank()) {
+                    names.add(name);
+                }
+            }
+        }
+        names.addAll(additionalNames);
+        return names.stream().distinct().toList();
     }
 
     private List<String> parsePullRequestCommitHashes(JsonNode nodes) {
@@ -812,6 +899,25 @@ public class GitHubGraphQLClient {
 
     public record QueryRequest(String query) {}
 
+    public record RepositoryIdentity(String owner, String name) {}
+
+    public record RepositoryMetadata(
+            String owner,
+            String name,
+            boolean fork,
+            RepositoryIdentity source,
+            RepositoryIdentity parent) {
+        public RepositoryIdentity upstream() {
+            if (!fork) {
+                return new RepositoryIdentity(owner, name);
+            }
+            if (source != null) {
+                return source;
+            }
+            return parent;
+        }
+    }
+
     public record PullRequest(
             int number,
             String title,
@@ -833,6 +939,8 @@ public class GitHubGraphQLClient {
             String state,
             String createdAt,
             String mergedAt,
+            boolean merged,
+            String mergeCommitHash,
             int reviewCount,
             int commentCount,
             int additions,
@@ -876,7 +984,7 @@ public class GitHubGraphQLClient {
             String createdAt,
             String closedAt,
             int commentCount,
-            int labelCount) {}
+            List<String> labelNames) {}
 
     public record Release(
             String id,

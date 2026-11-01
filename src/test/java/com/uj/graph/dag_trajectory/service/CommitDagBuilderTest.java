@@ -5,6 +5,7 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.Instant;
 import java.util.Date;
+import java.util.Set;
 import java.util.TimeZone;
 import org.eclipse.jgit.api.Git;
 import org.eclipse.jgit.lib.PersonIdent;
@@ -37,7 +38,49 @@ class CommitDagBuilderTest {
         assertTrue(analysis.commits().stream().allMatch(commit -> !commit.metrics().branchPoint()));
     }
 
-    private static void commitAt(Git git, Path repoDir, String message, Instant when) throws Exception {
+    @Test
+    void includesOnlyDefaultBranchReachableCommitsIncludingIntegratedForkContributions() throws Exception {
+        Path repoDir = tempDir.resolve("upstream");
+        String defaultCommitHash;
+        String forkContributionHash;
+        String unmergedForkCommitHash;
+        try (Git git = Git.init().setDirectory(repoDir.toFile()).setInitialBranch("main").call()) {
+            defaultCommitHash = commitAt(git, repoDir, "upstream base", Instant.parse("2026-08-09T10:00:00Z")).getName();
+
+            git.checkout()
+                    .setCreateBranch(true)
+                    .setName("fork-pr")
+                    .setStartPoint(defaultCommitHash)
+                    .call();
+            forkContributionHash = commitAt(git, repoDir, "fork contribution", Instant.parse("2026-08-09T11:00:00Z")).getName();
+
+            git.checkout()
+                    .setCreateBranch(true)
+                    .setName("unmerged-fork")
+                    .setStartPoint(defaultCommitHash)
+                    .call();
+            unmergedForkCommitHash = commitAt(git, repoDir, "unmerged fork contribution", Instant.parse("2026-08-09T12:00:00Z")).getName();
+            git.tag().setName("unrelated-tag").call();
+
+            git.checkout().setName("main").call();
+            git.merge().include(git.getRepository().resolve(forkContributionHash)).setMessage("Merge fork PR").call();
+            var originMain = git.getRepository().updateRef("refs/remotes/origin/main");
+            originMain.setNewObjectId(git.getRepository().resolve("HEAD"));
+            originMain.update();
+            git.getRepository().updateRef("refs/remotes/origin/HEAD").link("refs/remotes/origin/main");
+            git.checkout().setName("unmerged-fork").call();
+        }
+
+        var analysis = new CommitDagBuilder(new CommitGraphMetricsCalculator())
+                .build("ref-1", new GithubProjectRequest("upstream-owner", "repo"), repoDir);
+        Set<String> hashes = analysis.commits().stream().map(commit -> commit.hash()).collect(java.util.stream.Collectors.toSet());
+
+        assertTrue(hashes.contains(defaultCommitHash));
+        assertTrue(hashes.contains(forkContributionHash));
+        assertTrue(!hashes.contains(unmergedForkCommitHash));
+    }
+
+    private static org.eclipse.jgit.revwalk.RevCommit commitAt(Git git, Path repoDir, String message, Instant when) throws Exception {
         Files.writeString(repoDir.resolve("README.md"), message);
         git.add().addFilepattern("README.md").call();
         PersonIdent ident = new PersonIdent(
@@ -45,7 +88,7 @@ class CommitDagBuilderTest {
                 "a@example.com",
                 Date.from(when),
                 TimeZone.getTimeZone("UTC"));
-        git.commit()
+        return git.commit()
                 .setMessage(message)
                 .setAuthor(ident)
                 .setCommitter(ident)

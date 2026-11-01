@@ -36,4 +36,12 @@ public class CommitIssueLinkEntity {
         this.commit = commit;
         this.issue = issue;
     }
+
+    public CommitEntity getCommit() {
+        return commit;
+    }
+
+    public IssueEntity getIssue() {
+        return issue;
+    }
 }

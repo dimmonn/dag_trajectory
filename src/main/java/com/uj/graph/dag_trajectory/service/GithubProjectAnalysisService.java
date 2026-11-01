@@ -1,12 +1,17 @@
 package com.uj.graph.dag_trajectory.service;
 
 import com.uj.graph.dag_trajectory.entity.CommitEntity;
+import com.uj.graph.dag_trajectory.model.AllIssueLabelsRefreshResult;
 import com.uj.graph.dag_trajectory.model.CommitNode;
 import com.uj.graph.dag_trajectory.model.GithubProjectAnalysis;
 import com.uj.graph.dag_trajectory.model.GithubProjectRequest;
+import com.uj.graph.dag_trajectory.model.IssueLabelRefreshResult;
 import com.uj.graph.dag_trajectory.repository.CommitEntityRepository;
 import java.time.Instant;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Locale;
+import java.util.Map;
 import java.util.UUID;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -35,7 +40,14 @@ public class GithubProjectAnalysisService {
     public List<GithubProjectAnalysis> analyze(List<GithubProjectRequest> projects) {
         long batchStartedAt = System.currentTimeMillis();
         log.info("Starting project analysis batch: projects={}", projects.size());
-        List<GithubProjectAnalysis> result = projects.stream()
+        Map<String, GithubProjectRequest> upstreamProjects = new LinkedHashMap<>();
+        for (GithubProjectRequest requestedProject : projects) {
+            GithubProjectRequest upstream = repositoryCloner.resolveUpstream(requestedProject);
+            upstreamProjects.putIfAbsent(
+                    (upstream.owner() + "/" + upstream.name()).toLowerCase(Locale.ROOT),
+                    upstream);
+        }
+        List<GithubProjectAnalysis> result = upstreamProjects.values().stream()
             .map(project -> {
                 String projectRef = UUID.randomUUID().toString();
                 String projectName = project.owner() + "/" + project.name();
@@ -55,7 +67,11 @@ public class GithubProjectAnalysisService {
                         log.info("Commit persist progress: projectRef={}, processedCommits={}/{}", projectRef, processed, commitCount);
                     }
                 }
-                var mappingResult = metadataService.fetchAndSaveProjectMappings(project.owner(), project.name(), projectRef);
+                var mappingResult = metadataService.fetchAndSaveProjectMappings(
+                        project.owner(),
+                        project.name(),
+                        projectRef,
+                        analysis.commits().stream().map(CommitNode::hash).collect(java.util.stream.Collectors.toSet()));
                 int projectIssueCount = metadataService.fetchAndSaveProjectIssues(project.owner(), project.name(), projectRef);
                 var commitMetadataResult =
                         metadataService.fetchAndSaveProjectCommitMetadata(project.owner(), project.name(), projectRef);
@@ -100,6 +116,26 @@ public class GithubProjectAnalysisService {
         log.info("Subgraph built and saved: subgraphRef={}, sourceProjectRef={}, originalCommits={}, subgraphCommits={}, durationMs={}",
                 subgraphRef, projectRef, snapshots.size(), commits.size(), durationMillis);
         return subgraph;
+    }
+
+    public IssueLabelRefreshResult refreshIssueLabels(String projectRef) {
+        GithubProjectAnalysis graph = graphStore.findByRef(projectRef)
+                .orElseThrow(() -> new IllegalArgumentException("Unknown project ref: " + projectRef));
+        return metadataService.fetchAndSaveIssueLabels(graph.owner(), graph.name(), projectRef);
+    }
+
+    public AllIssueLabelsRefreshResult refreshIssueLabelsForAllProjects() {
+        int repositoriesProcessed = 0;
+        int issuesUpdated = 0;
+        int labelsStored = 0;
+        for (GithubProjectAnalysis graph : graphStore.findRootGraphs()) {
+            IssueLabelRefreshResult result =
+                    metadataService.fetchAndSaveIssueLabels(graph.owner(), graph.name(), graph.projectRef());
+            repositoriesProcessed++;
+            issuesUpdated += result.issuesUpdated();
+            labelsStored += result.labelsStored();
+        }
+        return new AllIssueLabelsRefreshResult(repositoriesProcessed, issuesUpdated, labelsStored);
     }
 
     private void upsertCommit(String projectRef, CommitNode commit) {

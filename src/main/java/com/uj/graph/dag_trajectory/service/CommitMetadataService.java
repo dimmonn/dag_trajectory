@@ -8,9 +8,12 @@ import com.uj.graph.dag_trajectory.entity.CommitIssueLinkEntity;
 import com.uj.graph.dag_trajectory.entity.CommitPullRequestEntity;
 import com.uj.graph.dag_trajectory.entity.CommitPullRequestLinkEntity;
 import com.uj.graph.dag_trajectory.entity.IssueEntity;
+import com.uj.graph.dag_trajectory.entity.IssueLabelCategory;
+import com.uj.graph.dag_trajectory.entity.IssueLabelEntity;
 import com.uj.graph.dag_trajectory.entity.PullRequestEntity;
 import com.uj.graph.dag_trajectory.entity.PullRequestIssueLinkEntity;
 import com.uj.graph.dag_trajectory.entity.ReleaseEntity;
+import com.uj.graph.dag_trajectory.model.IssueLabelRefreshResult;
 import com.uj.graph.dag_trajectory.repository.CommitCICDRepository;
 import com.uj.graph.dag_trajectory.repository.CommitCommentRepository;
 import com.uj.graph.dag_trajectory.repository.CommitEntityRepository;
@@ -19,15 +22,22 @@ import com.uj.graph.dag_trajectory.repository.CommitIssueLinkRepository;
 import com.uj.graph.dag_trajectory.repository.CommitPullRequestRepository;
 import com.uj.graph.dag_trajectory.repository.CommitPullRequestLinkRepository;
 import com.uj.graph.dag_trajectory.repository.IssueEntityRepository;
+import com.uj.graph.dag_trajectory.repository.IssueLabelRepository;
 import com.uj.graph.dag_trajectory.repository.PullRequestEntityRepository;
 import com.uj.graph.dag_trajectory.repository.PullRequestIssueLinkRepository;
 import com.uj.graph.dag_trajectory.repository.ReleaseEntityRepository;
 import java.time.Instant;
 import java.util.Comparator;
+import java.util.HashMap;
+import java.util.HashSet;
+import java.util.List;
+import java.util.Map;
+import java.util.Set;
 import java.util.UUID;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 
 @Service
 public class CommitMetadataService {
@@ -36,6 +46,7 @@ public class CommitMetadataService {
     private final GitHubGraphQLClient graphQLClient;
     private final PullRequestEntityRepository pullRequestRepository;
     private final IssueEntityRepository issueRepository;
+    private final IssueLabelRepository issueLabelRepository;
     private final CommitEntityRepository commitRepository;
     private final CommitPullRequestLinkRepository commitPullRequestLinkRepository;
     private final CommitIssueLinkRepository commitIssueLinkRepository;
@@ -50,6 +61,7 @@ public class CommitMetadataService {
             GitHubGraphQLClient graphQLClient,
             PullRequestEntityRepository pullRequestRepository,
             IssueEntityRepository issueRepository,
+            IssueLabelRepository issueLabelRepository,
             CommitEntityRepository commitRepository,
             CommitPullRequestLinkRepository commitPullRequestLinkRepository,
             CommitIssueLinkRepository commitIssueLinkRepository,
@@ -62,6 +74,7 @@ public class CommitMetadataService {
         this.graphQLClient = graphQLClient;
         this.pullRequestRepository = pullRequestRepository;
         this.issueRepository = issueRepository;
+        this.issueLabelRepository = issueLabelRepository;
         this.commitRepository = commitRepository;
         this.commitPullRequestLinkRepository = commitPullRequestLinkRepository;
         this.commitIssueLinkRepository = commitIssueLinkRepository;
@@ -75,8 +88,15 @@ public class CommitMetadataService {
 
 
 
-    public ProjectMappingPersistResult fetchAndSaveProjectMappings(String owner, String repo, String projectRef) {
+    public ProjectMappingPersistResult fetchAndSaveProjectMappings(
+            String owner, String repo, String projectRef, Set<String> upstreamDagHashes) {
         var pullRequests = graphQLClient.getPullRequestsForProject(owner, repo);
+        Map<String, CommitEntity> upstreamCommits = new HashMap<>();
+        for (CommitEntity commit : commitRepository.findByProjectRef(projectRef)) {
+            if (upstreamDagHashes.contains(commit.getCommitHash())) {
+                upstreamCommits.put(commit.getCommitHash(), commit);
+            }
+        }
         int prCount = 0;
         int commitPrLinks = 0;
         int prIssueLinks = 0;
@@ -108,40 +128,79 @@ public class CommitMetadataService {
                             pr.linkedIssues()),
                     timeToMergeSeconds);
 
-            for (String commitHash : pr.commitHashes()) {
-                CommitEntity commit = resolveCommit(projectRef, commitHash);
+            Map<Integer, IssueEntity> linkedIssues = new HashMap<>();
+            for (var linkedIssue : pr.linkedIssues()) {
+                Long issueCreatedAt = parseToEpochSecond(linkedIssue.createdAt());
+                Long issueClosedAt = parseToEpochSecond(linkedIssue.closedAt());
+                Long timeToCloseSeconds = null;
+                if (issueCreatedAt != null && issueClosedAt != null) {
+                    timeToCloseSeconds = issueClosedAt - issueCreatedAt;
+                }
+                IssueEntity issue = upsertIssue(
+                        projectRef,
+                        linkedIssue.number(),
+                        linkedIssue.title(),
+                        linkedIssue.url(),
+                        linkedIssue.state(),
+                        issueCreatedAt,
+                        issueClosedAt,
+                        timeToCloseSeconds,
+                        linkedIssue.commentCount(),
+                        1,
+                        "CLOSED".equalsIgnoreCase(linkedIssue.state()),
+                        linkedIssue.labelCount());
+                linkedIssues.put(linkedIssue.number(), issue);
+                if (savePullRequestIssueLink(pullRequest, issue)) {
+                    prIssueLinks++;
+                    refreshRelatedPrCount(issue);
+                }
+            }
+
+            if (!pr.merged() && pr.mergedAt() == null) {
+                continue;
+            }
+
+            List<CommitEntity> integratedCommits = pr.commitHashes().stream()
+                    .filter(upstreamDagHashes::contains)
+                    .map(upstreamCommits::get)
+                    .filter(java.util.Objects::nonNull)
+                    .distinct()
+                    .toList();
+            if (integratedCommits.isEmpty()
+                    && pr.mergeCommitHash() != null
+                    && upstreamDagHashes.contains(pr.mergeCommitHash())) {
+                CommitEntity mergeCommit = upstreamCommits.get(pr.mergeCommitHash());
+                if (mergeCommit != null && mergeCommit.getParentCount() != null && mergeCommit.getParentCount() <= 1) {
+                    integratedCommits = List.of(mergeCommit);
+                }
+            }
+            if (integratedCommits.isEmpty()) {
+                log.warn(
+                        "Merged PR could not be matched to upstream DAG commits: projectRef={}, prNumber={}, prCommitCount={}, mergeCommitHash={}",
+                        projectRef,
+                        pr.number(),
+                        pr.commitHashes().size(),
+                        pr.mergeCommitHash());
+                continue;
+            }
+            if (integratedCommits.size() < pr.commitHashes().size()) {
+                log.warn(
+                        "Some PR commits could not be matched to upstream DAG: projectRef={}, prNumber={}, matched={}, reported={}",
+                        projectRef,
+                        pr.number(),
+                        integratedCommits.size(),
+                        pr.commitHashes().size());
+            }
+            for (CommitEntity commit : integratedCommits) {
                 if (saveCommitPullRequestLink(commit, pullRequest)) {
                     commitPrLinks++;
                 }
-                saveLegacyCommitPullRequest(projectRef, commitHash, pullRequest);
-                for (var linkedIssue : pr.linkedIssues()) {
-                    Long issueCreatedAt = parseToEpochSecond(linkedIssue.createdAt());
-                    Long issueClosedAt = parseToEpochSecond(linkedIssue.closedAt());
-                    Long timeToCloseSeconds = null;
-                    if (issueCreatedAt != null && issueClosedAt != null) {
-                        timeToCloseSeconds = issueClosedAt - issueCreatedAt;
-                    }
-                    IssueEntity issue = upsertIssue(
-                            projectRef,
-                            linkedIssue.number(),
-                            linkedIssue.title(),
-                            linkedIssue.url(),
-                            linkedIssue.state(),
-                            issueCreatedAt,
-                            issueClosedAt,
-                            timeToCloseSeconds,
-                            linkedIssue.commentCount(),
-                            1,
-                            "CLOSED".equalsIgnoreCase(linkedIssue.state()),
-                            linkedIssue.labelCount());
-                    if (savePullRequestIssueLink(pullRequest, issue)) {
-                        prIssueLinks++;
-                        refreshRelatedPrCount(issue);
-                    }
+                saveLegacyCommitPullRequest(projectRef, commit.getCommitHash(), pullRequest);
+                for (IssueEntity issue : linkedIssues.values()) {
                     if (saveCommitIssueLink(commit, issue)) {
                         commitIssueLinks++;
                     }
-                    saveLegacyCommitIssue(projectRef, commitHash, issue);
+                    saveLegacyCommitIssue(projectRef, commit.getCommitHash(), issue);
                 }
             }
         }
@@ -157,6 +216,7 @@ public class CommitMetadataService {
         return new ProjectMappingPersistResult(prCount, commitPrLinks, prIssueLinks, commitIssueLinks);
     }
 
+    @Transactional
     public int fetchAndSaveProjectIssues(String owner, String repo, String projectRef) {
         var issues = graphQLClient.getIssuesForProject(owner, repo);
         for (var issue : issues) {
@@ -166,7 +226,7 @@ public class CommitMetadataService {
             if (createdAt != null && closedAt != null) {
                 timeToCloseSeconds = Math.max(0, closedAt - createdAt);
             }
-            upsertIssue(
+            IssueEntity persistedIssue = upsertIssue(
                     projectRef,
                     issue.number(),
                     issue.title(),
@@ -178,9 +238,67 @@ public class CommitMetadataService {
                     issue.commentCount(),
                     null,
                     "CLOSED".equalsIgnoreCase(issue.state()),
-                    issue.labelCount());
+                    issue.labelNames().size());
+            synchronizeIssueLabels(persistedIssue, issue.labelNames());
         }
         return issues.size();
+    }
+
+    @Transactional
+    public IssueLabelRefreshResult fetchAndSaveIssueLabels(String owner, String repo, String projectRef) {
+        if (!graphQLClient.isConfigured()) {
+            throw new IllegalStateException("GitHub token is required to refresh issue labels");
+        }
+        var githubIssues = graphQLClient.getIssuesForProject(owner, repo);
+        Map<Integer, GitHubGraphQLClient.ProjectIssue> issuesByNumber = new HashMap<>();
+        for (GitHubGraphQLClient.ProjectIssue issue : githubIssues) {
+            issuesByNumber.put(issue.number(), issue);
+        }
+
+        int issuesUpdated = 0;
+        int labelsStored = 0;
+        for (IssueEntity issue : issueRepository.findAllByProjectRef(projectRef)) {
+            GitHubGraphQLClient.ProjectIssue githubIssue = issuesByNumber.get(issue.getIssueNumber());
+            if (githubIssue == null) {
+                continue;
+            }
+            labelsStored += synchronizeIssueLabels(issue, githubIssue.labelNames());
+            issuesUpdated++;
+        }
+        log.info(
+                "Issue labels refreshed: projectRef={}, issuesUpdated={}, labelsStored={}",
+                projectRef,
+                issuesUpdated,
+                labelsStored);
+        return new IssueLabelRefreshResult(issuesUpdated, labelsStored);
+    }
+
+    private int synchronizeIssueLabels(IssueEntity issue, List<String> labelNames) {
+        Map<String, IssueLabelEntity> existingByName = new HashMap<>();
+        for (IssueLabelEntity existing : issueLabelRepository.findByIssue_Id(issue.getId())) {
+            existingByName.put(existing.getLabelName(), existing);
+        }
+
+        Set<String> desiredNames = new HashSet<>(labelNames);
+        issueLabelRepository.deleteAll(existingByName.entrySet().stream()
+                .filter(entry -> !desiredNames.contains(entry.getKey()))
+                .map(Map.Entry::getValue)
+                .toList());
+
+        var labelsToSave = labelNames.stream()
+                .distinct()
+                .map(labelName -> {
+                    IssueLabelEntity existing = existingByName.get(labelName);
+                    var category = IssueLabelCategoryMapper.map(labelName);
+                    if (existing != null) {
+                        existing.setCategory(category);
+                        return existing;
+                    }
+                    return new IssueLabelEntity(UUID.randomUUID().toString(), issue, labelName, category);
+                })
+                .toList();
+        issueLabelRepository.saveAll(labelsToSave);
+        return labelsToSave.size();
     }
 
     public ProjectCommitMetadataPersistResult fetchAndSaveProjectCommitMetadata(
@@ -396,18 +514,6 @@ public class CommitMetadataService {
         }
         String lowerLogin = login.toLowerCase();
         return lowerLogin.contains("bot") || lowerLogin.contains("github") || lowerLogin.contains("dependabot");
-    }
-
-    private CommitEntity resolveCommit(String projectRef, String commitHash) {
-        return commitRepository.findByProjectRefAndCommitHash(projectRef, commitHash)
-                .orElseGet(() -> commitRepository.save(new CommitEntity(
-                        UUID.randomUUID().toString(),
-                        projectRef,
-                        commitHash,
-                        null,
-                        null,
-                        null,
-                        null)));
     }
 
     private PullRequestEntity upsertPullRequest(
