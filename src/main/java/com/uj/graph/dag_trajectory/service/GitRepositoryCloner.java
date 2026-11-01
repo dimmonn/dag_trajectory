@@ -37,6 +37,17 @@ public class GitRepositoryCloner {
         return new GithubProjectRequest(upstream.owner(), upstream.name());
     }
 
+    public String getUpstreamDefaultBranch(GithubProjectRequest upstream) {
+        GitHubGraphQLClient.RepositoryMetadata metadata =
+                graphQLClient.getRepositoryMetadata(upstream.owner(), upstream.name());
+        String branch = metadata.defaultBranch();
+        if (branch == null || branch.isBlank()) {
+            throw new IllegalStateException("GitHub did not return default_branch for upstream "
+                    + upstream.owner() + "/" + upstream.name());
+        }
+        return branch;
+    }
+
     public Path clone(GithubProjectRequest project) {
         String projectName = project.owner() + "/" + project.name();
         Path cloneDirectory = cloneRoot.resolve(project.owner()).resolve(project.name());
