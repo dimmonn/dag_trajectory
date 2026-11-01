@@ -86,18 +86,18 @@ class CommitMetadataServiceTest {
     }
 
     @Test
-    void usesIntegratedSingleParentMergeCommitForSquashMerges() {
-        Fixture fixture = new Fixture(List.of(commit("squash-merge-commit", 1)));
+    void doesNotInferSquashOrRebaseMappingFromMergeCommitShaAlone() {
+        Fixture fixture = new Fixture(List.of(commit("single-parent-merge-commit", 1)));
         when(fixture.githubClient.getPullRequestsForProject("upstream", "repo")).thenReturn(List.of(
-                pr(4, "CLOSED", "2026-10-02T12:00:00Z", true, "squash-merge-commit",
+                pr(4, "CLOSED", "2026-10-02T12:00:00Z", true, "single-parent-merge-commit",
                         List.of("rewritten-away-source-commit"))));
 
-        fixture.persist(Set.of("squash-merge-commit"));
+        fixture.persist(Set.of("single-parent-merge-commit"));
 
-        ArgumentCaptor<CommitPullRequestLinkEntity> links = ArgumentCaptor.forClass(CommitPullRequestLinkEntity.class);
-        verify(fixture.commitPrLinkRepository).save(links.capture());
-        assertEquals("squash-merge-commit", links.getValue().getCommit().getCommitHash());
-        verify(fixture.commitIssueLinkRepository).save(any());
+        verify(fixture.commitPrLinkRepository, never()).save(any());
+        verify(fixture.commitIssueLinkRepository, never()).save(any());
+        verify(fixture.commitPrRepository, never()).save(any());
+        verify(fixture.commitIssueRepository, never()).save(any());
         verify(fixture.commitRepository, never()).save(any());
     }
 
