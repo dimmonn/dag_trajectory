@@ -63,7 +63,7 @@ public class GitHubGraphQLClient {
 
     public List<PullRequest> getPullRequestsForCommit(String owner, String repo, String commitOid) {
         if (githubToken == null || githubToken.isBlank()) {
-            return List.of();
+            throw new IllegalStateException("GitHub token is required for complete issue and pull-request metadata collection. Configure github.token.");
         }
         String query = """
                 query {
@@ -133,7 +133,7 @@ public class GitHubGraphQLClient {
 
     public List<PullRequestWithCommits> getPullRequestsForProject(String owner, String repo) {
         if (githubToken == null || githubToken.isBlank()) {
-            return List.of();
+            throw new IllegalStateException("GitHub token is required for complete issue and pull-request metadata collection. Configure github.token.");
         }
         List<PullRequestWithCommits> pullRequests = new ArrayList<>();
         String cursor = null;
@@ -241,7 +241,7 @@ public class GitHubGraphQLClient {
 
     public List<ProjectIssue> getIssuesForProject(String owner, String repo) {
         if (githubToken == null || githubToken.isBlank()) {
-            return List.of();
+            throw new IllegalStateException("GitHub token is required for complete issue and pull-request metadata collection. Configure github.token.");
         }
         List<ProjectIssue> issues = new ArrayList<>();
         String cursor = null;
@@ -304,7 +304,7 @@ public class GitHubGraphQLClient {
 
     public List<ProjectComment> getCommitCommentsForProject(String owner, String repo) {
         if (githubToken == null || githubToken.isBlank()) {
-            return List.of();
+            throw new IllegalStateException("GitHub token is required for complete issue and pull-request metadata collection. Configure github.token.");
         }
         List<ProjectComment> comments = new ArrayList<>();
         int page = 1;
@@ -337,7 +337,7 @@ public class GitHubGraphQLClient {
 
     public List<ProjectWorkflowRun> getWorkflowRunsForProject(String owner, String repo) {
         if (githubToken == null || githubToken.isBlank()) {
-            return List.of();
+            throw new IllegalStateException("GitHub token is required for complete issue and pull-request metadata collection. Configure github.token.");
         }
         List<ProjectWorkflowRun> runs = new ArrayList<>();
         int page = 1;
@@ -466,7 +466,7 @@ public class GitHubGraphQLClient {
 
     public List<Release> getReleases(String owner, String repo) {
         if (githubToken == null || githubToken.isBlank()) {
-            return List.of();
+            throw new IllegalStateException("GitHub token is required for complete issue and pull-request metadata collection. Configure github.token.");
         }
         List<Release> releases = new ArrayList<>();
         String cursor = null;
