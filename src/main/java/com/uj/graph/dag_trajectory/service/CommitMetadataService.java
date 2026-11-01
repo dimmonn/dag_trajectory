@@ -166,14 +166,6 @@ public class CommitMetadataService {
                     .filter(java.util.Objects::nonNull)
                     .distinct()
                     .toList();
-            if (integratedCommits.isEmpty()
-                    && pr.mergeCommitHash() != null
-                    && upstreamDagHashes.contains(pr.mergeCommitHash())) {
-                CommitEntity mergeCommit = upstreamCommits.get(pr.mergeCommitHash());
-                if (mergeCommit != null && mergeCommit.getParentCount() != null && mergeCommit.getParentCount() <= 1) {
-                    integratedCommits = List.of(mergeCommit);
-                }
-            }
             if (integratedCommits.isEmpty()) {
                 log.warn(
                         "Merged PR could not be matched to upstream DAG commits: projectRef={}, prNumber={}, prCommitCount={}, mergeCommitHash={}",
