@@ -49,12 +49,15 @@ public class GithubProjectAnalysisService {
         }
         List<GithubProjectAnalysis> result = upstreamProjects.values().stream()
             .map(project -> {
-                String projectRef = UUID.randomUUID().toString();
                 String projectName = project.owner() + "/" + project.name();
+                String projectRef = UUID.nameUUIDFromBytes(
+                        ("github-upstream:" + projectName.toLowerCase(Locale.ROOT))
+                                .getBytes(java.nio.charset.StandardCharsets.UTF_8)).toString();
+                String defaultBranch = repositoryCloner.getUpstreamDefaultBranch(project);
                 long startedAt = System.currentTimeMillis();
                 log.info("Analyzing project: projectRef={}, project={}", projectRef, projectName);
 
-                GithubProjectAnalysis analysis = commitDagBuilder.build(projectRef, project, repositoryCloner.clone(project));
+                GithubProjectAnalysis analysis = commitDagBuilder.build(projectRef, project, repositoryCloner.clone(project), defaultBranch);
                 graphStore.save(analysis);
                 int commitCount = analysis.commits().size();
                 log.info("Graph built and saved: projectRef={}, commits={}", projectRef, commitCount);
