@@ -36,6 +36,7 @@ import java.util.Set;
 import java.util.UUID;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -423,24 +424,48 @@ public class CommitMetadataService {
             Boolean isSuccess =
                     "COMPLETED".equalsIgnoreCase(run.status()) && "SUCCESS".equalsIgnoreCase(run.conclusion());
 
+            // GitHub metadata is external input. Keep values within the database's
+            // VARCHAR(255) limits and use a stable fallback for missing/oversized statuses.
+            String runStatus = databaseString(run.status(), "unknown", 255);
+            String runConclusion = databaseString(run.conclusion(), null, 255);
             CommitCICDEntity entity = new CommitCICDEntity(
                     UUID.randomUUID().toString(),
                     commit.getCommitHash(),
                     projectRef,
-                    run.name(),
+                    run.name() == null || run.name().isBlank() ? "unknown" : run.name(),
                     run.url() == null || run.url().isBlank() ? "unknown" : run.url(),
-                    run.status(),
-                    run.conclusion(),
+                    runStatus,
+                    runConclusion,
                     parseToEpochSecond(run.startedAt()),
                     run.completedAt() != null ? parseToEpochSecond(run.completedAt()) : null,
                     durationSeconds,
                     isSuccess,
                     run.attemptNumber(),
                     run.attemptNumber());
-            cicdRepository.save(entity);
-            persisted++;
+            try {
+                // Flush here so a bad row is isolated; the next workflow run can still be saved.
+                cicdRepository.saveAndFlush(entity);
+                persisted++;
+            } catch (DataIntegrityViolationException exception) {
+                log.warn(
+                        "Skipping invalid CI/CD record without aborting ingestion: projectRef={}, commitHash={}, workflowUrl={}, reason={}",
+                        projectRef,
+                        commit.getCommitHash(),
+                        run.url(),
+                        exception.getMostSpecificCause().getMessage());
+            }
         }
         return persisted;
+    }
+
+    private String databaseString(String value, String fallback, int maxLength) {
+        if (value == null || value.isBlank() || value.length() > maxLength) {
+            if (value != null && value.length() > maxLength) {
+                log.warn("Replacing oversized database string (length={}) with fallback", value.length());
+            }
+            return fallback;
+        }
+        return value;
     }
 
     private Long parseToEpochSecond(String isoDateTime) {
