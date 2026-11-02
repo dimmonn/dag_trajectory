@@ -1,5 +1,6 @@
 package com.uj.graph.dag_trajectory;
 
+import org.junit.jupiter.api.Disabled;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
@@ -15,6 +16,7 @@ public class SqlReproductionTest {
     private JdbcTemplate jdbcTemplate;
 
     @Test
+    @Disabled("This diagnostic script uses PostgreSQL-only SQL (jsonb, LATERAL, generate_series, ON CONFLICT) and cannot run against the H2 unit-test database.")
     void reproduceSqlError() throws Exception {
         jdbcTemplate.execute("CREATE TABLE IF NOT EXISTS project_graphs (project_ref text PRIMARY KEY, graph_json text, source_project_ref text)");
         jdbcTemplate.execute("INSERT INTO project_graphs (project_ref, graph_json, source_project_ref) VALUES ('test-project', '{\"commits\": [{\"hash\": \"c1\", \"authoredAtEpochSecond\": 1711929600, \"parents\": []}, {\"hash\": \"c2\", \"authoredAtEpochSecond\": 1711929700, \"parents\": [\"c1\"]}]}', NULL) ON CONFLICT DO NOTHING");
