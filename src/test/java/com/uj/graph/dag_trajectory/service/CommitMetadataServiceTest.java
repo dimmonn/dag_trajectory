@@ -218,6 +218,13 @@ class CommitMetadataServiceTest {
 
         private Fixture(List<CommitEntity> commits) {
             when(commitRepository.findByProjectRef("project-ref")).thenReturn(commits);
+            for (CommitEntity commit : commits) {
+                when(commitRepository.findByProjectRefAndCommitHash("project-ref", commit.getCommitHash()))
+                        .thenReturn(Optional.of(commit));
+            }
+            when(githubClient.getCommitCommentsForProject("upstream", "repo")).thenReturn(List.of());
+            when(githubClient.getWorkflowRunsForProject("upstream", "repo")).thenReturn(List.of());
+            when(cicdRepository.saveAndFlush(any())).thenAnswer(invocation -> invocation.getArgument(0));
             when(pullRequestRepository.findByProjectRefAndPrNumber(org.mockito.ArgumentMatchers.anyString(), org.mockito.ArgumentMatchers.anyInt()))
                     .thenReturn(Optional.empty());
             when(pullRequestRepository.save(any())).thenAnswer(invocation -> invocation.getArgument(0));
