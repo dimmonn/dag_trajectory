@@ -1,5 +1,6 @@
 package com.uj.graph.dag_trajectory.service;
 
+import com.uj.graph.dag_trajectory.entity.CommitCICDEntity;
 import com.uj.graph.dag_trajectory.entity.CommitEntity;
 import com.uj.graph.dag_trajectory.entity.CommitIssueLinkEntity;
 import com.uj.graph.dag_trajectory.entity.CommitPullRequestEntity;
@@ -20,6 +21,7 @@ import com.uj.graph.dag_trajectory.repository.PullRequestIssueLinkRepository;
 import com.uj.graph.dag_trajectory.repository.ReleaseEntityRepository;
 import java.util.List;
 import java.util.Optional;
+import org.springframework.dao.DataIntegrityViolationException;
 import java.util.Set;
 import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
@@ -117,6 +119,52 @@ class CommitMetadataServiceTest {
         verify(fixture.commitRepository, never()).save(any());
     }
 
+    @Test
+    void replacesOversizedWorkflowStatusWithUnknownAndPersistsRun() {
+        Fixture fixture = new Fixture(List.of(commit("workflow-commit", 1)));
+        when(fixture.githubClient.getWorkflowRunsForProject("upstream", "repo")).thenReturn(List.of(
+                workflowRun("workflow-commit", "x".repeat(256), "SUCCESS")));
+
+        int persisted = fixture.service.fetchAndSaveProjectCommitMetadata("upstream", "repo", "project-ref")
+                .workflowRunCount();
+
+        assertEquals(1, persisted);
+        ArgumentCaptor<CommitCICDEntity> captor = ArgumentCaptor.forClass(CommitCICDEntity.class);
+        verify(fixture.cicdRepository).saveAndFlush(captor.capture());
+        assertEquals("unknown", captor.getValue().getRunStatus());
+        assertEquals("SUCCESS", captor.getValue().getRunConclusion());
+    }
+
+    @Test
+    void skipsInvalidWorkflowRunAndContinuesWithNextRun() {
+        Fixture fixture = new Fixture(List.of(commit("workflow-commit", 1)));
+        when(fixture.githubClient.getWorkflowRunsForProject("upstream", "repo")).thenReturn(List.of(
+                workflowRun("workflow-commit", "QUEUED", "SUCCESS"),
+                workflowRun("workflow-commit", "COMPLETED", "SUCCESS")));
+        when(fixture.cicdRepository.saveAndFlush(any()))
+                .thenThrow(new DataIntegrityViolationException("invalid row"))
+                .thenAnswer(invocation -> invocation.getArgument(0));
+
+        int persisted = fixture.service.fetchAndSaveProjectCommitMetadata("upstream", "repo", "project-ref")
+                .workflowRunCount();
+
+        assertEquals(1, persisted);
+        verify(fixture.cicdRepository, times(2)).saveAndFlush(any());
+    }
+
+    private static GitHubGraphQLClient.ProjectWorkflowRun workflowRun(
+            String commitHash, String status, String conclusion) {
+        return new GitHubGraphQLClient.ProjectWorkflowRun(
+                commitHash,
+                "Build",
+                "https://github.com/upstream/repo/actions/runs/1",
+                status,
+                conclusion,
+                "2026-10-01T12:00:00Z",
+                "2026-10-01T12:01:00Z",
+                1);
+    }
+
     private static CommitEntity commit(String hash, int parentCount) {
         return new CommitEntity("id-" + hash, "project-ref", hash, 1L, parentCount, Math.max(0, parentCount - 1), parentCount > 1);
     }
@@ -165,10 +213,18 @@ class CommitMetadataServiceTest {
         private final CommitPullRequestRepository commitPrRepository = mock(CommitPullRequestRepository.class);
         private final CommitIssueRepository commitIssueRepository = mock(CommitIssueRepository.class);
         private final PullRequestIssueLinkRepository pullRequestIssueLinkRepository = mock(PullRequestIssueLinkRepository.class);
+        private final CommitCICDRepository cicdRepository = mock(CommitCICDRepository.class);
         private final CommitMetadataService service;
 
         private Fixture(List<CommitEntity> commits) {
             when(commitRepository.findByProjectRef("project-ref")).thenReturn(commits);
+            for (CommitEntity commit : commits) {
+                when(commitRepository.findByProjectRefAndCommitHash("project-ref", commit.getCommitHash()))
+                        .thenReturn(Optional.of(commit));
+            }
+            when(githubClient.getCommitCommentsForProject("upstream", "repo")).thenReturn(List.of());
+            when(githubClient.getWorkflowRunsForProject("upstream", "repo")).thenReturn(List.of());
+            when(cicdRepository.saveAndFlush(any())).thenAnswer(invocation -> invocation.getArgument(0));
             when(pullRequestRepository.findByProjectRefAndPrNumber(org.mockito.ArgumentMatchers.anyString(), org.mockito.ArgumentMatchers.anyInt()))
                     .thenReturn(Optional.empty());
             when(pullRequestRepository.save(any())).thenAnswer(invocation -> invocation.getArgument(0));
@@ -186,7 +242,7 @@ class CommitMetadataServiceTest {
                     commitPrRepository,
                     commitIssueRepository,
                     mock(CommitCommentRepository.class),
-                    mock(CommitCICDRepository.class),
+                    cicdRepository,
                     pullRequestIssueLinkRepository,
                     mock(ReleaseEntityRepository.class));
         }
