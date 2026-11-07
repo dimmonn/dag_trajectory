@@ -105,14 +105,14 @@ public class SzzAnalysisService {
         var clonePath = repositoryCloner.clone(new GithubProjectRequest(graph.owner(), graph.name()));
         List<BugIntroducingCommitEntity> rows = new ArrayList<>();
         Set<String> candidateHashes = new HashSet<>();
-        int skippedMergeCommits = 0;
+        int skippedNonSingleParentCommits = 0;
         int analyzedFixCommits = 0;
         long generatedAt = Instant.now().getEpochSecond();
 
         for (Map.Entry<String, Set<String>> fixingCommit : issueIdsByFixCommit.entrySet()) {
             SzzLineBlamer.BlameOutcome outcome = lineBlamer.blame(clonePath, fixingCommit.getKey());
-            if (outcome.skippedMergeCommit()) {
-                skippedMergeCommits++;
+            if (outcome.skippedNonSingleParentCommit()) {
+                skippedNonSingleParentCommits++;
                 continue;
             }
             analyzedFixCommits++;
@@ -132,10 +132,10 @@ public class SzzAnalysisService {
 
         persistenceService.replaceProjectResults(projectRef, rows);
         int storedCount = resultRepository.findAllByProjectRef(projectRef).size();
-        log.info("SZZ completed: projectRef={}, bugIssues={}, fixingCommits={}, skippedMergeFixes={}, bicCandidates={}, resultRows={}",
-                projectRef, bugIssues.size(), analyzedFixCommits, skippedMergeCommits, candidateHashes.size(), storedCount);
+        log.info("SZZ completed: projectRef={}, bugIssues={}, fixingCommits={}, skippedNonSingleParentCommits={}, bicCandidates={}, resultRows={}",
+                projectRef, bugIssues.size(), analyzedFixCommits, skippedNonSingleParentCommits, candidateHashes.size(), storedCount);
         return new SzzAnalysisResult(projectRef, bugIssues.size(), analyzedFixCommits,
-                skippedMergeCommits, candidateHashes.size(), storedCount);
+                skippedNonSingleParentCommits, candidateHashes.size(), storedCount);
     }
 
     public List<BugIntroducingCommitEntity> getResults(String projectRef) {
