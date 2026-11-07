@@ -27,6 +27,9 @@ public class BugIntroducingCommitEntity {
     @Column(name = "bic_commit_hash", nullable = false, length = 40)
     private String bicCommitHash;
 
+    @Column(name = "bic_commit_epoch_second")
+    private Long bicCommitEpochSecond;
+
     @Column(name = "file_path", nullable = false, columnDefinition = "text")
     private String filePath;
 
@@ -42,13 +45,14 @@ public class BugIntroducingCommitEntity {
     protected BugIntroducingCommitEntity() {}
 
     public BugIntroducingCommitEntity(String id, String projectRef, int issueNumber,
-            String fixCommitHash, String bicCommitHash, String filePath,
+            String fixCommitHash, String bicCommitHash, Long bicCommitEpochSecond, String filePath,
             int deletedLines, String algorithm, long createdAtEpochSecond) {
         this.id = id;
         this.projectRef = projectRef;
         this.issueNumber = issueNumber;
         this.fixCommitHash = fixCommitHash;
         this.bicCommitHash = bicCommitHash;
+        this.bicCommitEpochSecond = bicCommitEpochSecond;
         this.filePath = filePath;
         this.deletedLines = deletedLines;
         this.algorithm = algorithm;
@@ -59,6 +63,7 @@ public class BugIntroducingCommitEntity {
     public int getIssueNumber() { return issueNumber; }
     public String getFixCommitHash() { return fixCommitHash; }
     public String getBicCommitHash() { return bicCommitHash; }
+    public Long getBicCommitEpochSecond() { return bicCommitEpochSecond; }
     public String getFilePath() { return filePath; }
     public int getDeletedLines() { return deletedLines; }
     public String getAlgorithm() { return algorithm; }
