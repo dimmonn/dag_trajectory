@@ -80,5 +80,5 @@ public class SzzLineBlamer {
 
     private record FindingKey(String bicCommitHash, String filePath) {}
     public record BlamedFile(String bicCommitHash, String filePath, int deletedLines) {}
-    public record BlameOutcome(boolean skippedMergeCommit, List<BlamedFile> findings) {}
+    public record BlameOutcome(boolean skippedNonSingleParentCommit, List<BlamedFile> findings) {}
 }
