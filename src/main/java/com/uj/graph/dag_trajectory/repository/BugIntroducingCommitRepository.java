@@ -8,5 +8,6 @@ import org.springframework.stereotype.Repository;
 @Repository
 public interface BugIntroducingCommitRepository extends JpaRepository<BugIntroducingCommitEntity, String> {
     List<BugIntroducingCommitEntity> findAllByProjectRef(String projectRef);
+    long countByProjectRef(String projectRef);
     void deleteAllByProjectRef(String projectRef);
 }
