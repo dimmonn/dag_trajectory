@@ -29,7 +29,7 @@ The POST response reports the number of BUG-labelled issues considered, the numb
 5. If no original PR commit SHA matches the upstream DAG, use the PR's reported merge commit SHA only when that exact SHA exists in the DAG. This supports some squash/rebase cases without importing unmerged fork commits. It does not guarantee mapping of every rebased PR.
 6. For each fixing commit with exactly one parent, diff the parent against the fixing commit. For every deleted or replaced pre-fix line, run JGit blame on the parent version of that file and attribute the line to its source commit.
 7. Exclude a blamed source commit whose committer timestamp is later than the issue creation timestamp. This prevents post-report edits from being labeled as the cause of an already reported defect. The timestamp comparison is second-resolution and relies on Git commit timestamps, which can be inaccurate.
-8. Persist one row per project, issue, fixing commit, blamed commit, and file in `bug_introducing_commits`. `deleted_lines` is the number of deleted/replaced lines attributed to that blamed commit in that file.
+8. Persist one row per project, issue, fixing commit, blamed commit, and file in `bug_introducing_commits`. `deleted_lines` is the number of deleted/replaced lines attributed to that blamed commit in that file. The blamed commit timestamp is stored in `bic_commit_epoch_second` for auditability.
 
 ## Interpretation and limitations
 
@@ -42,4 +42,4 @@ The POST response reports the number of BUG-labelled issues considered, the numb
 - A BUG label is the defect-report selection criterion, not proof that the issue describes a confirmed defect.
 - Run against root upstream project graphs, not time-cutoff subgraphs. Historical prediction experiments should still construct time-valid features and avoid future-information leakage.
 
-The algorithm identifier stored with each row is `SZZ_LINE_BLAME_V1`.
+The algorithm identifier stored with each row is `SZZ_LINE_BLAME_V2`.
