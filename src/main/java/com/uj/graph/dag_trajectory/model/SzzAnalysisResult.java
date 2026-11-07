@@ -4,7 +4,7 @@ public record SzzAnalysisResult(
         String projectRef,
         int bugIssuesConsidered,
         int fixingCommitsAnalyzed,
-        int fixingCommitsSkippedAsMerge,
+        int fixingCommitsSkippedNonSingleParent,
         int bugIntroducingCommitCandidates,
         int resultRowsStored) {
 }
