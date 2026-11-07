@@ -72,11 +72,21 @@ public class SzzAnalysisService {
                 .collect(java.util.stream.Collectors.toMap(
                         IssueEntity::getId, issue -> issue, (left, right) -> left, LinkedHashMap::new))
                 .values().stream().toList();
+
+        // A report date is required to distinguish pre-report suspects from later edits.
+        // Do not silently treat issues with missing dates as if they had no time constraint.
         Set<String> bugIssueIds = new HashSet<>();
         Map<String, Integer> issueNumbersById = new HashMap<>();
+        Map<String, Long> issueCreatedAtById = new HashMap<>();
+        int bugIssuesMissingReportDate = 0;
         for (IssueEntity issue : bugIssues) {
+            if (issue.getCreatedAtEpochSecond() == null) {
+                bugIssuesMissingReportDate++;
+                continue;
+            }
             bugIssueIds.add(issue.getId());
             issueNumbersById.put(issue.getId(), issue.getIssueNumber());
+            issueCreatedAtById.put(issue.getId(), issue.getCreatedAtEpochSecond());
         }
 
         Map<String, Set<String>> issueIdsByMergedPrId = new HashMap<>();
@@ -107,21 +117,38 @@ public class SzzAnalysisService {
         Set<String> candidateHashes = new HashSet<>();
         int skippedNonSingleParentCommits = 0;
         int analyzedFixCommits = 0;
+        int postReportLineAttributionsExcluded = 0;
+        int failedFixCommits = 0;
         long generatedAt = Instant.now().getEpochSecond();
 
         for (Map.Entry<String, Set<String>> fixingCommit : issueIdsByFixCommit.entrySet()) {
-            SzzLineBlamer.BlameOutcome outcome = lineBlamer.blame(clonePath, fixingCommit.getKey());
+            SzzLineBlamer.BlameOutcome outcome;
+            try {
+                outcome = lineBlamer.blame(clonePath, fixingCommit.getKey());
+            } catch (RuntimeException e) {
+                failedFixCommits++;
+                log.error("SZZ could not analyze fixing commit {}; continuing with the remaining candidates",
+                        fixingCommit.getKey(), e);
+                continue;
+            }
+
             if (outcome.skippedNonSingleParentCommit()) {
                 skippedNonSingleParentCommits++;
                 continue;
             }
             analyzedFixCommits++;
+
             for (String issueId : fixingCommit.getValue()) {
                 Integer issueNumber = issueNumbersById.get(issueId);
-                if (issueNumber == null) {
+                Long issueCreatedAt = issueCreatedAtById.get(issueId);
+                if (issueNumber == null || issueCreatedAt == null) {
                     continue;
                 }
                 for (SzzLineBlamer.BlamedFile finding : outcome.findings()) {
+                    if (!isEligibleCandidate(finding.bicCommitEpochSecond(), issueCreatedAt)) {
+                        postReportLineAttributionsExcluded++;
+                        continue;
+                    }
                     candidateHashes.add(finding.bicCommitHash());
                     rows.add(new BugIntroducingCommitEntity(
                             UUID.randomUUID().toString(), projectRef, issueNumber, fixingCommit.getKey(),
@@ -130,16 +157,29 @@ public class SzzAnalysisService {
             }
         }
 
+        // Never replace a previous complete result set with a partial run.
+        if (failedFixCommits > 0) {
+            throw new IllegalStateException("SZZ analysis failed for " + failedFixCommits
+                    + " fixing commit(s) in project " + projectRef
+                    + "; previous persisted SZZ results were left unchanged. Check the preceding error logs.");
+        }
+
         persistenceService.replaceProjectResults(projectRef, rows);
-        int storedCount = resultRepository.findAllByProjectRef(projectRef).size();
-        log.info("SZZ completed: projectRef={}, bugIssues={}, fixingCommits={}, skippedNonSingleParentCommits={}, bicCandidates={}, resultRows={}",
-                projectRef, bugIssues.size(), analyzedFixCommits, skippedNonSingleParentCommits, candidateHashes.size(), storedCount);
-        return new SzzAnalysisResult(projectRef, bugIssues.size(), analyzedFixCommits,
-                skippedNonSingleParentCommits, candidateHashes.size(), storedCount);
+        int storedCount = Math.toIntExact(resultRepository.countByProjectRef(projectRef));
+        log.info("SZZ completed: projectRef={}, bugIssues={}, bugIssuesMissingReportDate={}, fixingCommits={}, skippedNonSingleParentCommits={}, postReportLineAttributionsExcluded={}, bicCandidates={}, resultRows={}",
+                projectRef, bugIssues.size(), bugIssuesMissingReportDate, analyzedFixCommits,
+                skippedNonSingleParentCommits, postReportLineAttributionsExcluded, candidateHashes.size(), storedCount);
+        return new SzzAnalysisResult(projectRef, bugIssues.size(), bugIssuesMissingReportDate,
+                analyzedFixCommits, skippedNonSingleParentCommits, postReportLineAttributionsExcluded,
+                candidateHashes.size(), storedCount);
     }
 
     public List<BugIntroducingCommitEntity> getResults(String projectRef) {
         return resultRepository.findAllByProjectRef(projectRef);
+    }
+
+    static boolean isEligibleCandidate(long bicCommitEpochSecond, Long issueCreatedAtEpochSecond) {
+        return issueCreatedAtEpochSecond != null && bicCommitEpochSecond <= issueCreatedAtEpochSecond;
     }
 
     private static boolean isMerged(PullRequestEntity pullRequest) {
