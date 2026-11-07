@@ -35,6 +35,7 @@ public class SzzLineBlamer {
                 formatter.setDetectRenames(true);
 
                 for (DiffEntry entry : formatter.scan(parent, fixingCommit)) {
+                    // A newly added file has no pre-fix lines that can be blamed.
                     if (DiffEntry.DEV_NULL.equals(entry.getOldPath())) {
                         continue;
                     }
@@ -57,7 +58,9 @@ public class SzzLineBlamer {
                         for (int oldLine = edit.getBeginA(); oldLine < edit.getEndA(); oldLine++) {
                             RevCommit source = blame.getSourceCommit(oldLine);
                             if (source != null) {
-                                deletedLineCounts.merge(new FindingKey(source.getName(), entry.getOldPath()), 1, Integer::sum);
+                                deletedLineCounts.merge(
+                                        new FindingKey(source.getName(), entry.getOldPath(), source.getCommitTime()),
+                                        1, Integer::sum);
                             }
                         }
                     }
@@ -65,7 +68,11 @@ public class SzzLineBlamer {
             }
 
             List<BlamedFile> findings = deletedLineCounts.entrySet().stream()
-                    .map(entry -> new BlamedFile(entry.getKey().bicCommitHash(), entry.getKey().filePath(), entry.getValue()))
+                    .map(entry -> new BlamedFile(
+                            entry.getKey().bicCommitHash(),
+                            entry.getKey().filePath(),
+                            entry.getValue(),
+                            entry.getKey().bicCommitEpochSecond()))
                     .sorted(Comparator.comparing(BlamedFile::bicCommitHash).thenComparing(BlamedFile::filePath))
                     .toList();
             return new BlameOutcome(false, findings);
@@ -78,7 +85,11 @@ public class SzzLineBlamer {
         }
     }
 
-    private record FindingKey(String bicCommitHash, String filePath) {}
-    public record BlamedFile(String bicCommitHash, String filePath, int deletedLines) {}
+    private record FindingKey(String bicCommitHash, String filePath, long bicCommitEpochSecond) {}
+    public record BlamedFile(
+            String bicCommitHash,
+            String filePath,
+            int deletedLines,
+            long bicCommitEpochSecond) {}
     public record BlameOutcome(boolean skippedNonSingleParentCommit, List<BlamedFile> findings) {}
 }
