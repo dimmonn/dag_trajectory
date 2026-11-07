@@ -28,7 +28,7 @@ import org.springframework.stereotype.Service;
 @Service
 public class SzzAnalysisService {
     private static final Logger log = LoggerFactory.getLogger(SzzAnalysisService.class);
-    private static final String ALGORITHM = "SZZ_LINE_BLAME_V1";
+    private static final String ALGORITHM = "SZZ_LINE_BLAME_V2";
 
     private final GithubProjectGraphStore graphStore;
     private final GitRepositoryCloner repositoryCloner;
@@ -152,7 +152,8 @@ public class SzzAnalysisService {
                     candidateHashes.add(finding.bicCommitHash());
                     rows.add(new BugIntroducingCommitEntity(
                             UUID.randomUUID().toString(), projectRef, issueNumber, fixingCommit.getKey(),
-                            finding.bicCommitHash(), finding.filePath(), finding.deletedLines(), ALGORITHM, generatedAt));
+                            finding.bicCommitHash(), finding.bicCommitEpochSecond(), finding.filePath(),
+                            finding.deletedLines(), ALGORITHM, generatedAt));
                 }
             }
         }
