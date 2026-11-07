@@ -41,7 +41,7 @@ class SzzLineBlamerTest {
 
         var result = new SzzLineBlamer().blame(repositoryPath, fixingCommit);
 
-        assertFalse(result.skippedMergeCommit());
+        assertFalse(result.skippedNonSingleParentCommit());
         assertEquals(1, result.findings().size());
         assertEquals(introducingCommit, result.findings().getFirst().bicCommitHash());
         assertEquals("Example.java", result.findings().getFirst().filePath());
@@ -67,7 +67,7 @@ class SzzLineBlamerTest {
 
         var result = new SzzLineBlamer().blame(repositoryPath, mergeCommit);
 
-        assertTrue(result.skippedMergeCommit());
+        assertTrue(result.skippedNonSingleParentCommit());
         assertTrue(result.findings().isEmpty());
     }
 
