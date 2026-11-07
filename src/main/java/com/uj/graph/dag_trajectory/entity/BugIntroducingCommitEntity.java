@@ -8,8 +8,8 @@ import jakarta.persistence.UniqueConstraint;
 
 @Entity
 @Table(name = "bug_introducing_commits", uniqueConstraints = @UniqueConstraint(
-        name = "uk_szz_project_issue_fix_bic",
-        columnNames = {"project_ref", "issue_number", "fix_commit_hash", "bic_commit_hash"}))
+        name = "uk_szz_project_issue_fix_bic_file",
+        columnNames = {"project_ref", "issue_number", "fix_commit_hash", "bic_commit_hash", "file_path"}))
 public class BugIntroducingCommitEntity {
     @Id
     @Column(name = "id", nullable = false, updatable = false)
@@ -54,4 +54,13 @@ public class BugIntroducingCommitEntity {
         this.algorithm = algorithm;
         this.createdAtEpochSecond = createdAtEpochSecond;
     }
+
+    public String getProjectRef() { return projectRef; }
+    public int getIssueNumber() { return issueNumber; }
+    public String getFixCommitHash() { return fixCommitHash; }
+    public String getBicCommitHash() { return bicCommitHash; }
+    public String getFilePath() { return filePath; }
+    public int getDeletedLines() { return deletedLines; }
+    public String getAlgorithm() { return algorithm; }
+    public long getCreatedAtEpochSecond() { return createdAtEpochSecond; }
 }
