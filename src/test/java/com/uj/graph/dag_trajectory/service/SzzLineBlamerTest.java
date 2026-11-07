@@ -46,6 +46,8 @@ class SzzLineBlamerTest {
         assertEquals(introducingCommit, result.findings().getFirst().bicCommitHash());
         assertEquals("Example.java", result.findings().getFirst().filePath());
         assertEquals(1, result.findings().getFirst().deletedLines());
+        assertEquals(Instant.parse("2020-01-01T10:00:00Z").getEpochSecond(),
+                result.findings().getFirst().bicCommitEpochSecond());
     }
 
     @Test
