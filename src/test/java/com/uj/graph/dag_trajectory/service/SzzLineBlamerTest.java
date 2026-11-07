@@ -53,11 +53,12 @@ class SzzLineBlamerTest {
         Path repositoryPath = tempDir.resolve("merge-repo");
         String mergeCommit;
         try (Git git = Git.init().setDirectory(repositoryPath.toFile()).setInitialBranch("main").call()) {
-            String base = commitFile(git, repositoryPath, "base\n", "base", "2020-01-01T10:00:00Z").getName();
+            String base = commitPath(git, repositoryPath, "base.txt", "base\n",
+                    "base", "2020-01-01T10:00:00Z").getName();
             git.checkout().setCreateBranch(true).setName("side").setStartPoint(base).call();
-            commitFile(git, repositoryPath, "base\nside\n", "side change", "2020-01-02T10:00:00Z");
+            commitPath(git, repositoryPath, "side.txt", "side\n", "side change", "2020-01-02T10:00:00Z");
             git.checkout().setName("main").call();
-            commitFile(git, repositoryPath, "base\nmain\n", "main change", "2020-01-03T10:00:00Z");
+            commitPath(git, repositoryPath, "main.txt", "main\n", "main change", "2020-01-03T10:00:00Z");
             var merged = git.merge().include(git.getRepository().resolve("refs/heads/side"))
                     .setMessage("merge side").call();
             assertTrue(merged.getMergeStatus().isSuccessful());
@@ -72,8 +73,13 @@ class SzzLineBlamerTest {
 
     private static org.eclipse.jgit.revwalk.RevCommit commitFile(
             Git git, Path repositoryPath, String content, String message, String timestamp) throws Exception {
-        Files.writeString(repositoryPath.resolve("Example.java"), content);
-        git.add().addFilepattern("Example.java").call();
+        return commitPath(git, repositoryPath, "Example.java", content, message, timestamp);
+    }
+
+    private static org.eclipse.jgit.revwalk.RevCommit commitPath(
+            Git git, Path repositoryPath, String fileName, String content, String message, String timestamp) throws Exception {
+        Files.writeString(repositoryPath.resolve(fileName), content);
+        git.add().addFilepattern(fileName).call();
         Instant instant = Instant.parse(timestamp);
         PersonIdent ident = new PersonIdent("Test", "test@example.com", Date.from(instant), TimeZone.getTimeZone("UTC"));
         return git.commit().setMessage(message).setAuthor(ident).setCommitter(ident).call();
