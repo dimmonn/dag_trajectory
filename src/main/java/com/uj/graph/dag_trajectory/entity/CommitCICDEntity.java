@@ -19,10 +19,10 @@ public class CommitCICDEntity {
     @Column(name = "project_ref", nullable = false)
     private String projectRef;
 
-    @Column(name = "workflow_name", nullable = false)
+    @Column(name = "workflow_name", nullable = false, columnDefinition = "TEXT")
     private String workflowName;
 
-    @Column(name = "workflow_url", nullable = false)
+    @Column(name = "workflow_url", nullable = false, columnDefinition = "TEXT")
     private String workflowUrl;
 
     @Column(name = "run_status", nullable = false)
