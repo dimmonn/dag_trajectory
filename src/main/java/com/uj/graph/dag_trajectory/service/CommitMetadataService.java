@@ -167,6 +167,19 @@ public class CommitMetadataService {
                     .filter(java.util.Objects::nonNull)
                     .distinct()
                     .toList();
+
+            // Squash-merged and some rebased PRs do not retain the original PR commit SHAs
+            // on the upstream default branch. In that case, use GitHub's merge commit SHA
+            // only when that exact object is present in the upstream DAG.
+            if (integratedCommits.isEmpty()
+                    && pr.mergeCommitHash() != null
+                    && upstreamDagHashes.contains(pr.mergeCommitHash())) {
+                CommitEntity integratedMergeCommit = upstreamCommits.get(pr.mergeCommitHash());
+                if (integratedMergeCommit != null) {
+                    integratedCommits = List.of(integratedMergeCommit);
+                }
+            }
+
             if (integratedCommits.isEmpty()) {
                 log.warn(
                         "Merged PR could not be matched to upstream DAG commits: projectRef={}, prNumber={}, prCommitCount={}, mergeCommitHash={}",

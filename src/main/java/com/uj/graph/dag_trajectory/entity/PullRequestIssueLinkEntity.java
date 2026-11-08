@@ -36,4 +36,7 @@ public class PullRequestIssueLinkEntity {
         this.pullRequest = pullRequest;
         this.issue = issue;
     }
+
+    public PullRequestEntity getPullRequest() { return pullRequest; }
+    public IssueEntity getIssue() { return issue; }
 }

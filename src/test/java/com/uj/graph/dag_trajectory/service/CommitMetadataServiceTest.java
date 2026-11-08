@@ -88,7 +88,7 @@ class CommitMetadataServiceTest {
     }
 
     @Test
-    void doesNotInferSquashOrRebaseMappingFromMergeCommitShaAlone() {
+    void usesMergeCommitShaAsFallbackWhenItExistsInTheUpstreamDag() {
         Fixture fixture = new Fixture(List.of(commit("single-parent-merge-commit", 1)));
         when(fixture.githubClient.getPullRequestsForProject("upstream", "repo")).thenReturn(List.of(
                 pr(4, "CLOSED", "2026-10-02T12:00:00Z", true, "single-parent-merge-commit",
@@ -96,11 +96,14 @@ class CommitMetadataServiceTest {
 
         fixture.persist(Set.of("single-parent-merge-commit"));
 
-        verify(fixture.commitPrLinkRepository, never()).save(any());
-        verify(fixture.commitIssueLinkRepository, never()).save(any());
-        verify(fixture.commitPrRepository, never()).save(any());
-        verify(fixture.commitIssueRepository, never()).save(any());
-        verify(fixture.commitRepository, never()).save(any());
+        ArgumentCaptor<CommitPullRequestLinkEntity> prLinks = ArgumentCaptor.forClass(CommitPullRequestLinkEntity.class);
+        verify(fixture.commitPrLinkRepository).save(prLinks.capture());
+        assertEquals("single-parent-merge-commit", prLinks.getValue().getCommit().getCommitHash());
+        ArgumentCaptor<CommitIssueLinkEntity> issueLinks = ArgumentCaptor.forClass(CommitIssueLinkEntity.class);
+        verify(fixture.commitIssueLinkRepository).save(issueLinks.capture());
+        assertEquals("single-parent-merge-commit", issueLinks.getValue().getCommit().getCommitHash());
+        verify(fixture.commitPrRepository).save(any());
+        verify(fixture.commitIssueRepository).save(any());
     }
 
     @Test
