@@ -112,7 +112,9 @@ TRUNCATE TABLE dag_source_edges,
 -- Only original graphs are used. Graphs already stored as
 -- subgraphs are excluded via source_project_ref IS NULL.
 --
--- New graph captures use committedAtEpochSecond for temporal ordering.\n-- Legacy captures predate the separate timestamp fields and used authoredAtEpochSecond\n-- to store JGit's committer timestamp; COALESCE preserves their historical semantics.
+-- New graph captures use committedAtEpochSecond for temporal ordering.
+-- Legacy captures predate the separate timestamp fields and used authoredAtEpochSecond
+-- to store JGit's committer timestamp; COALESCE preserves their historical semantics.
 -- =========================================================
 
 INSERT INTO dag_source_commits (
@@ -125,7 +127,10 @@ SELECT
     pg.project_ref,
     node.commit_json ->> 'hash',
     to_timestamp(
-            COALESCE(\n                node.commit_json ->> 'committedAtEpochSecond',\n                node.commit_json ->> 'authoredAtEpochSecond'\n            )::bigint
+            COALESCE(
+                node.commit_json ->> 'committedAtEpochSecond',
+                node.commit_json ->> 'authoredAtEpochSecond'
+            )::bigint
     ),
     CASE
         WHEN jsonb_typeof(node.commit_json -> 'parents') = 'array'
