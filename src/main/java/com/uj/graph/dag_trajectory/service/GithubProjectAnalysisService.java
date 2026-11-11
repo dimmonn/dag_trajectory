@@ -148,7 +148,7 @@ public class GithubProjectAnalysisService {
                         UUID.randomUUID().toString(),
                         projectRef,
                         commit.hash(),
-                        commit.authoredAtEpochSecond(),
+                        commit.committedAtEpochSecond(),
                         commit.metrics().parentCount(),
                         commit.metrics().mergeParentCount(),
                         commit.metrics().mergeParentCount() > 0));
