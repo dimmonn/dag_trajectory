@@ -29,4 +29,42 @@ class CommitGraphMetricsCalculatorTest {
         assertTrue(nodes.stream().allMatch(node -> node.metrics().ancestorCount() >= 0));
         assertTrue(nodes.stream().allMatch(node -> node.metrics().descendantCount() >= 0));
     }
+
+    @Test
+    void usesCommitterTimeForTemporalMetricsAndKeepsAuthorTimeSeparate() {
+        var calculator = new CommitGraphMetricsCalculator();
+        var authorA = Instant.parse("2026-08-09T08:00:00Z");
+        var authorB = Instant.parse("2026-08-09T09:00:00Z");
+        var committerA = Instant.parse("2026-08-09T10:00:00Z");
+        var committerB = Instant.parse("2026-08-09T11:00:00Z");
+
+        var snapshots = List.of(
+                new CommitGraphMetricsCalculator.CommitSnapshot("a", List.of(), authorA, committerA),
+                new CommitGraphMetricsCalculator.CommitSnapshot("b", List.of("a"), authorB, committerB));
+
+        var nodes = calculator.buildNodes(snapshots);
+        var a = nodes.stream().filter(node -> node.hash().equals("a")).findFirst().orElseThrow();
+        var b = nodes.stream().filter(node -> node.hash().equals("b")).findFirst().orElseThrow();
+
+        assertEquals(authorA.getEpochSecond(), a.authoredAtEpochSecond());
+        assertEquals(committerA.getEpochSecond(), a.committedAtEpochSecond());
+        assertEquals(3_600L, a.metrics().childLagSeconds());
+        assertEquals(2L, b.metrics().commitsIn7d());
+    }
+
+    @Test
+    void appliesExclusiveCutoffToCommitterTimestamp() {
+        var calculator = new CommitGraphMetricsCalculator();
+        var cutoff = Instant.parse("2026-08-09T10:00:00Z");
+        var snapshots = List.of(
+                new CommitGraphMetricsCalculator.CommitSnapshot(
+                        "before", List.of(), Instant.parse("2026-08-09T12:00:00Z"), cutoff.minusSeconds(1)),
+                new CommitGraphMetricsCalculator.CommitSnapshot(
+                        "at-cutoff", List.of(), Instant.parse("2026-08-09T08:00:00Z"), cutoff));
+
+        var sliced = calculator.sliceByCutoff(snapshots, cutoff);
+
+        assertEquals(List.of("before"), sliced.stream().map(CommitGraphMetricsCalculator.CommitSnapshot::hash).toList());
+    }
+
 }
