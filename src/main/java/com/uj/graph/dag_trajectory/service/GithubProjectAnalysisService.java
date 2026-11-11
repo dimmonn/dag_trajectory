@@ -152,7 +152,8 @@ public class GithubProjectAnalysisService {
                         commit.metrics().parentCount(),
                         commit.metrics().mergeParentCount(),
                         commit.metrics().mergeParentCount() > 0));
-        // Keep the legacy commits.authored_at column's historical operational meaning (committer time).\n        entity.setAuthoredAtEpochSecond(commit.committedAtEpochSecond());
+        // Keep the legacy commits.authored_at column's historical operational meaning (committer time).
+        entity.setAuthoredAtEpochSecond(commit.committedAtEpochSecond());
         entity.setParentCount(commit.metrics().parentCount());
         entity.setMergeParentCount(commit.metrics().mergeParentCount());
         entity.setMerge(commit.metrics().mergeParentCount() > 0);
