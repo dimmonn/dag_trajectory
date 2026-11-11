@@ -133,7 +133,8 @@ INSERT INTO dag_source_commits (
 SELECT
     pg.project_ref,
     node.commit_json ->> 'hash',
-    CASE WHEN node.commit_json ->> 'authoredAtEpochSecond' IS NOT NULL
+    CASE WHEN node.commit_json ->> 'committedAtEpochSecond' IS NOT NULL
+              AND node.commit_json ->> 'authoredAtEpochSecond' IS NOT NULL
          THEN to_timestamp((node.commit_json ->> 'authoredAtEpochSecond')::bigint)
          ELSE NULL END,
     to_timestamp(
