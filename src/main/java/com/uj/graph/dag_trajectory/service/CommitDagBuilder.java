@@ -54,10 +54,18 @@ public class CommitDagBuilder {
                 snapshots.add(new CommitGraphMetricsCalculator.CommitSnapshot(
                         commit.getName(),
                         parents,
-                        Instant.ofEpochSecond(commit.getCommitTime())));
+                        commit.getAuthorIdent().getWhen().toInstant(),\n                        commit.getCommitterIdent().getWhen().toInstant()));
             }
             List<CommitNode> commits = metricsCalculator.buildNodes(snapshots);
-            return new GithubProjectAnalysis(projectRef, project.owner(), project.name(), clonedRepository.toString(), commits);
+            return new GithubProjectAnalysis(
+                    projectRef,
+                    project.owner(),
+                    project.name(),
+                    clonedRepository.toString(),
+                    commits,
+                    defaultBranch,
+                    defaultBranchHeadId.name(),
+                    Instant.now().getEpochSecond());
         } catch (IOException e) {
             throw new IllegalStateException("Failed to open cloned repository at " + clonedRepository, e);
         } catch (Exception e) {
