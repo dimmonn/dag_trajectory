@@ -109,7 +109,7 @@ public class GithubProjectAnalysisService {
         GithubProjectAnalysis graph = graphStore.findByRef(projectRef)
                 .orElseThrow(() -> new IllegalArgumentException("Unknown project ref: " + projectRef));
         List<CommitGraphMetricsCalculator.CommitSnapshot> snapshots = graph.commits().stream()
-                .map(commit -> new CommitGraphMetricsCalculator.CommitSnapshot(commit.hash(), commit.parents(), Instant.ofEpochSecond(commit.authoredAtEpochSecond()), Instant.ofEpochSecond(commit.committedAtEpochSecond())))
+                .map(commit -> new CommitGraphMetricsCalculator.CommitSnapshot(commit.hash(), commit.parents(), Instant.ofEpochSecond(commit.authoredAtEpochSecond()), Instant.ofEpochSecond(commit.committedAtEpochSecond() == null ? commit.authoredAtEpochSecond() : commit.committedAtEpochSecond())))
                 .toList();
         List<CommitGraphMetricsCalculator.CommitSnapshot> prunedSnapshots = metricsCalculator.sliceByCutoff(snapshots, cutoffAt);
         List<CommitNode> commits = metricsCalculator.buildNodes(prunedSnapshots);
@@ -148,12 +148,12 @@ public class GithubProjectAnalysisService {
                         UUID.randomUUID().toString(),
                         projectRef,
                         commit.hash(),
-                        commit.committedAtEpochSecond(),
+                        (commit.committedAtEpochSecond() == null ? commit.authoredAtEpochSecond() : commit.committedAtEpochSecond()),
                         commit.metrics().parentCount(),
                         commit.metrics().mergeParentCount(),
                         commit.metrics().mergeParentCount() > 0));
         // Keep the legacy commits.authored_at column's historical operational meaning (committer time).
-        entity.setAuthoredAtEpochSecond(commit.committedAtEpochSecond());
+        entity.setAuthoredAtEpochSecond(commit.committedAtEpochSecond() == null ? commit.authoredAtEpochSecond() : commit.committedAtEpochSecond());
         entity.setParentCount(commit.metrics().parentCount());
         entity.setMergeParentCount(commit.metrics().mergeParentCount());
         entity.setMerge(commit.metrics().mergeParentCount() > 0);
