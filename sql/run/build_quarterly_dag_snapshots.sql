@@ -5,11 +5,14 @@
 CREATE TABLE IF NOT EXISTS dag_source_commits (
                                                   project_ref  text NOT NULL,
                                                   commit_hash  text NOT NULL,
+                                                  author_time  timestamptz,
                                                   commit_time  timestamptz NOT NULL,
                                                   parents      jsonb NOT NULL DEFAULT '[]'::jsonb,
 
                                                   PRIMARY KEY (project_ref, commit_hash)
 );
+
+ALTER TABLE dag_source_commits ADD COLUMN IF NOT EXISTS author_time timestamptz;
 
 -- =========================================================
 -- 2. Store DAG edges: parent -> child
@@ -58,11 +61,14 @@ CREATE TABLE IF NOT EXISTS dag_snapshot_commits (
                                                     snapshot_id bigint NOT NULL
                                                         REFERENCES dag_snapshots(snapshot_id) ON DELETE CASCADE,
                                                     commit_hash text NOT NULL,
+                                                    author_time timestamptz,
                                                     commit_time timestamptz NOT NULL,
                                                     parent_count integer NOT NULL DEFAULT 0,
 
                                                     PRIMARY KEY (snapshot_id, commit_hash)
 );
+
+ALTER TABLE dag_snapshot_commits ADD COLUMN IF NOT EXISTS author_time timestamptz;
 
 CREATE INDEX IF NOT EXISTS idx_dag_snapshot_commits_time
     ON dag_snapshot_commits(snapshot_id, commit_time);
@@ -120,12 +126,16 @@ TRUNCATE TABLE dag_source_edges,
 INSERT INTO dag_source_commits (
     project_ref,
     commit_hash,
+    author_time,
     commit_time,
     parents
 )
 SELECT
     pg.project_ref,
     node.commit_json ->> 'hash',
+    CASE WHEN node.commit_json ->> 'authoredAtEpochSecond' IS NOT NULL
+         THEN to_timestamp((node.commit_json ->> 'authoredAtEpochSecond')::bigint)
+         ELSE NULL END,
     to_timestamp(
             COALESCE(
                 node.commit_json ->> 'committedAtEpochSecond',
@@ -232,12 +242,14 @@ ON CONFLICT (project_ref, quarter_start) DO NOTHING;
 INSERT INTO dag_snapshot_commits (
     snapshot_id,
     commit_hash,
+    author_time,
     commit_time,
     parent_count
 )
 SELECT
     s.snapshot_id,
     c.commit_hash,
+    c.author_time,
     c.commit_time,
     count(p.commit_hash)::integer
 FROM dag_snapshots s
@@ -254,6 +266,7 @@ FROM dag_snapshots s
 GROUP BY
     s.snapshot_id,
     c.commit_hash,
+    c.author_time,
     c.commit_time
 ON CONFLICT (snapshot_id, commit_hash) DO NOTHING;
 
