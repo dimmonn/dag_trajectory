@@ -54,7 +54,8 @@ public class CommitDagBuilder {
                 snapshots.add(new CommitGraphMetricsCalculator.CommitSnapshot(
                         commit.getName(),
                         parents,
-                        commit.getAuthorIdent().getWhen().toInstant(),\n                        commit.getCommitterIdent().getWhen().toInstant()));
+                        commit.getAuthorIdent().getWhen().toInstant(),
+                        commit.getCommitterIdent().getWhen().toInstant()));
             }
             List<CommitNode> commits = metricsCalculator.buildNodes(snapshots);
             return new GithubProjectAnalysis(
