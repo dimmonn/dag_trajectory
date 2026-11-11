@@ -333,11 +333,11 @@ public class CommitMetadataService {
                     long diff = Math.max(0, releaseEpochSecond - previousReleaseEpochSecond);
                     daysSincePreviousRelease = diff / 86_400;
                     commitsSincePreviousRelease = commitRepository
-                            .countByProjectRefAndAuthoredAtEpochSecondGreaterThanAndAuthoredAtEpochSecondLessThanEqual(
+                            .countByProjectRefAndCommittedAtEpochSecondGreaterThanAndCommittedAtEpochSecondLessThanEqual(
                                     projectRef, previousReleaseEpochSecond, releaseEpochSecond);
                 } else {
                     commitsSincePreviousRelease = commitRepository
-                            .countByProjectRefAndAuthoredAtEpochSecondLessThanEqual(projectRef, releaseEpochSecond);
+                            .countByProjectRefAndCommittedAtEpochSecondLessThanEqual(projectRef, releaseEpochSecond);
                 }
             }
 

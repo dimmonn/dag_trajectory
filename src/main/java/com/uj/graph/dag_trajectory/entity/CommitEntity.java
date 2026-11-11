@@ -22,8 +22,15 @@ public class CommitEntity {
     @Column(name = "commit_hash", nullable = false)
     private String commitHash;
 
+    // Legacy column retained for compatibility; historically populated with committer time.
     @Column(name = "authored_at")
     private Long authoredAtEpochSecond;
+
+    @Column(name = "author_at")
+    private Long authorAtEpochSecond;
+
+    @Column(name = "committed_at")
+    private Long committedAtEpochSecond;
 
     @Column(name = "parent_count")
     private Integer parentCount;
@@ -49,6 +56,7 @@ public class CommitEntity {
         this.projectRef = projectRef;
         this.commitHash = commitHash;
         this.authoredAtEpochSecond = authoredAtEpochSecond;
+        this.committedAtEpochSecond = authoredAtEpochSecond;
         this.parentCount = parentCount;
         this.mergeParentCount = mergeParentCount;
         this.merge = merge;
@@ -68,6 +76,22 @@ public class CommitEntity {
 
     public Long getAuthoredAtEpochSecond() {
         return authoredAtEpochSecond;
+    }
+
+    public Long getAuthorAtEpochSecond() {
+        return authorAtEpochSecond;
+    }
+
+    public Long getCommittedAtEpochSecond() {
+        return committedAtEpochSecond;
+    }
+
+    public void setAuthorAtEpochSecond(Long authorAtEpochSecond) {
+        this.authorAtEpochSecond = authorAtEpochSecond;
+    }
+
+    public void setCommittedAtEpochSecond(Long committedAtEpochSecond) {
+        this.committedAtEpochSecond = committedAtEpochSecond;
     }
 
     public Integer getParentCount() {

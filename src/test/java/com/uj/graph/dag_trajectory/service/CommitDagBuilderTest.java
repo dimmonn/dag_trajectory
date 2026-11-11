@@ -80,6 +80,31 @@ class CommitDagBuilderTest {
         assertTrue(!hashes.contains(unmergedForkCommitHash));
     }
 
+
+    @Test
+    void recordsDistinctGitAuthorAndCommitterTimesAndCapturedHead() throws Exception {
+        Path repoDir = tempDir.resolve("timestamp-repo");
+        String headHash;
+        Instant authorTime = Instant.parse("2026-08-09T08:00:00Z");
+        Instant committerTime = Instant.parse("2026-08-09T10:00:00Z");
+        try (Git git = Git.init().setDirectory(repoDir.toFile()).call()) {
+            Files.writeString(repoDir.resolve("README.md"), "timestamp test");
+            git.add().addFilepattern("README.md").call();
+            PersonIdent author = new PersonIdent("Author", "author@example.com", Date.from(authorTime), TimeZone.getTimeZone("UTC"));
+            PersonIdent committer = new PersonIdent("Committer", "committer@example.com", Date.from(committerTime), TimeZone.getTimeZone("UTC"));
+            headHash = git.commit().setMessage("timestamp test").setAuthor(author).setCommitter(committer).call().getName();
+        }
+
+        var analysis = new CommitDagBuilder(new CommitGraphMetricsCalculator())
+                .build("ref-time", new GithubProjectRequest("octocat", "timestamp-repo"), repoDir);
+        var commit = analysis.commits().getFirst();
+
+        assertEquals(authorTime.getEpochSecond(), commit.authoredAtEpochSecond());
+        assertEquals(committerTime.getEpochSecond(), commit.committedAtEpochSecond());
+        assertEquals(headHash, analysis.headSha());
+        assertTrue(analysis.analyzedAtEpochSecond() > 0);
+    }
+
     private static org.eclipse.jgit.revwalk.RevCommit commitAt(Git git, Path repoDir, String message, Instant when) throws Exception {
         Files.writeString(repoDir.resolve("README.md"), message);
         git.add().addFilepattern("README.md").call();

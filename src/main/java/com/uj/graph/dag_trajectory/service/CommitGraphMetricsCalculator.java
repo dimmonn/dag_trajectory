@@ -42,7 +42,7 @@ public class CommitGraphMetricsCalculator {
         }
         Map<String, CommitSnapshot> selected = new LinkedHashMap<>();
         for (CommitSnapshot snapshot : snapshots) {
-            if (!snapshot.authoredAt().isAfter(cutoffAt)) {
+            if (snapshot.committedAt().isBefore(cutoffAt)) {
                 selected.put(snapshot.hash(), snapshot);
             }
         }
@@ -133,7 +133,7 @@ public class CommitGraphMetricsCalculator {
                 mergeCommitsIn30d,
                 mergeCommitsIn90d);
         logNodeMetrics(snapshot, metrics, loggingContext);
-        return new CommitNode(snapshot.hash(), snapshot.parents(), snapshot.authoredAt().getEpochSecond(), metrics);
+        return new CommitNode(snapshot.hash(), snapshot.parents(), snapshot.authorAt().getEpochSecond(), snapshot.committedAt().getEpochSecond(), metrics);
     }
 
     private void logNodeMetrics(CommitSnapshot snapshot, CommitMetrics metrics, NodeLoggingContext context) {
@@ -367,12 +367,12 @@ public class CommitGraphMetricsCalculator {
         if (parent == null) {
             return 0;
         }
-        return Math.max(0, ChronoUnit.SECONDS.between(parent.authoredAt(), snapshot.authoredAt()));
+        return Math.max(0, ChronoUnit.SECONDS.between(parent.committedAt(), snapshot.committedAt()));
     }
 
     private long ancestorSpan(CommitSnapshot snapshot, Map<String, CommitSnapshot> byHash) {
         Instant earliest = earliestAncestorTime(snapshot, byHash, new HashMap<>());
-        return Math.max(0, ChronoUnit.SECONDS.between(earliest, snapshot.authoredAt()));
+        return Math.max(0, ChronoUnit.SECONDS.between(earliest, snapshot.committedAt()));
     }
 
     private long childLag(CommitSnapshot snapshot, Map<String, CommitSnapshot> byHash, Map<String, List<String>> childrenByHash) {
@@ -382,7 +382,7 @@ public class CommitGraphMetricsCalculator {
             if (child == null) {
                 continue;
             }
-            long diff = ChronoUnit.SECONDS.between(snapshot.authoredAt(), child.authoredAt());
+            long diff = ChronoUnit.SECONDS.between(snapshot.committedAt(), child.committedAt());
             if (diff >= 0 && diff < lag) {
                 lag = diff;
             }
@@ -392,7 +392,7 @@ public class CommitGraphMetricsCalculator {
 
     private long branchLifetime(CommitSnapshot snapshot, Map<String, CommitSnapshot> byHash, Map<String, List<String>> childrenByHash) {
         Instant farthest = farthestDescendantTime(snapshot.hash(), byHash, childrenByHash, new HashMap<>());
-        return Math.max(0, ChronoUnit.SECONDS.between(snapshot.authoredAt(), farthest));
+        return Math.max(0, ChronoUnit.SECONDS.between(snapshot.committedAt(), farthest));
     }
 
     private long branchDivergenceSpan(CommitSnapshot snapshot, Map<String, CommitSnapshot> byHash) {
@@ -403,7 +403,7 @@ public class CommitGraphMetricsCalculator {
             if (child == null || !child.parents().contains(snapshot.hash())) {
                 continue;
             }
-            long epoch = child.authoredAt().getEpochSecond();
+            long epoch = child.committedAt().getEpochSecond();
             min = Math.min(min, epoch);
             max = Math.max(max, epoch);
         }
@@ -436,7 +436,7 @@ public class CommitGraphMetricsCalculator {
             }
             List<String> children = childrenByHash.getOrDefault(current, List.of());
             if (children.isEmpty()) {
-                memo.put(current, snapshot.authoredAt());
+                memo.put(current, snapshot.committedAt());
                 stack.pop();
                 continue;
             }
@@ -447,14 +447,14 @@ public class CommitGraphMetricsCalculator {
                     }
                     if (expanded.contains(childHash)) {
                         CommitSnapshot child = byHash.get(childHash);
-                        memo.putIfAbsent(childHash, child != null ? child.authoredAt() : Instant.EPOCH);
+                        memo.putIfAbsent(childHash, child != null ? child.committedAt() : Instant.EPOCH);
                         continue;
                     }
                     stack.push(childHash);
                 }
                 continue;
             }
-            Instant farthest = snapshot.authoredAt();
+            Instant farthest = snapshot.committedAt();
             for (String childHash : children) {
                 Instant descendant = memo.get(childHash);
                 if (descendant != null && descendant.isAfter(farthest)) {
@@ -468,16 +468,16 @@ public class CommitGraphMetricsCalculator {
     }
 
     private long activityCount(CommitSnapshot snapshot, Collection<CommitSnapshot> snapshots, int days) {
-        Instant start = snapshot.authoredAt().minus(days, ChronoUnit.DAYS);
+        Instant start = snapshot.committedAt().minus(days, ChronoUnit.DAYS);
         return snapshots.stream()
-                .filter(candidate -> !candidate.authoredAt().isBefore(start) && !candidate.authoredAt().isAfter(snapshot.authoredAt()))
+                .filter(candidate -> !candidate.committedAt().isBefore(start) && !candidate.committedAt().isAfter(snapshot.committedAt()))
                 .count();
     }
 
     private long mergeActivityCount(CommitSnapshot snapshot, Collection<CommitSnapshot> snapshots, int days) {
-        Instant start = snapshot.authoredAt().minus(days, ChronoUnit.DAYS);
+        Instant start = snapshot.committedAt().minus(days, ChronoUnit.DAYS);
         return snapshots.stream()
-                .filter(candidate -> !candidate.authoredAt().isBefore(start) && !candidate.authoredAt().isAfter(snapshot.authoredAt()))
+                .filter(candidate -> !candidate.committedAt().isBefore(start) && !candidate.committedAt().isAfter(snapshot.committedAt()))
                 .filter(candidate -> candidate.parents().size() > 1)
                 .count();
     }
@@ -504,7 +504,7 @@ public class CommitGraphMetricsCalculator {
                 continue;
             }
             if (currentSnapshot.parents().isEmpty()) {
-                memo.put(current, currentSnapshot.authoredAt());
+                memo.put(current, currentSnapshot.committedAt());
                 stack.pop();
                 continue;
             }
@@ -515,14 +515,14 @@ public class CommitGraphMetricsCalculator {
                     }
                     if (expanded.contains(parentHash)) {
                         CommitSnapshot parent = byHash.get(parentHash);
-                        memo.putIfAbsent(parentHash, parent != null ? parent.authoredAt() : Instant.EPOCH);
+                        memo.putIfAbsent(parentHash, parent != null ? parent.committedAt() : Instant.EPOCH);
                         continue;
                     }
                     stack.push(parentHash);
                 }
                 continue;
             }
-            Instant earliest = currentSnapshot.authoredAt();
+            Instant earliest = currentSnapshot.committedAt();
             for (String parentHash : currentSnapshot.parents()) {
                 Instant parentEarliest = memo.get(parentHash);
                 if (parentEarliest != null && parentEarliest.isBefore(earliest)) {
@@ -532,12 +532,17 @@ public class CommitGraphMetricsCalculator {
             memo.put(current, earliest);
             stack.pop();
         }
-        return memo.getOrDefault(snapshot.hash(), snapshot.authoredAt());
+        return memo.getOrDefault(snapshot.hash(), snapshot.committedAt());
     }
 
-    public record CommitSnapshot(String hash, List<String> parents, Instant authoredAt) {
+    public record CommitSnapshot(String hash, List<String> parents, Instant authorAt, Instant committedAt) {
+        /** Legacy fixtures used one timestamp for both Git timestamps. */
+        public CommitSnapshot(String hash, List<String> parents, Instant timestamp) {
+            this(hash, parents, timestamp, timestamp);
+        }
+
         public CommitSnapshot withParents(List<String> parents) {
-            return new CommitSnapshot(hash, parents, authoredAt);
+            return new CommitSnapshot(hash, parents, authorAt, committedAt);
         }
     }
 }

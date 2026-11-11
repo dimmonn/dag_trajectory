@@ -10,7 +10,7 @@ import org.springframework.stereotype.Repository;
 public interface CommitEntityRepository extends JpaRepository<CommitEntity, String> {
     Optional<CommitEntity> findByProjectRefAndCommitHash(String projectRef, String commitHash);
     List<CommitEntity> findByProjectRef(String projectRef);
-    long countByProjectRefAndAuthoredAtEpochSecondLessThanEqual(String projectRef, Long authoredAtEpochSecond);
-    long countByProjectRefAndAuthoredAtEpochSecondGreaterThanAndAuthoredAtEpochSecondLessThanEqual(
+    long countByProjectRefAndCommittedAtEpochSecondLessThanEqual(String projectRef, Long committedAtEpochSecond);
+    long countByProjectRefAndCommittedAtEpochSecondGreaterThanAndCommittedAtEpochSecondLessThanEqual(
             String projectRef, Long lowerExclusive, Long upperInclusive);
 }
