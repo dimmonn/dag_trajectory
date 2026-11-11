@@ -112,7 +112,7 @@ TRUNCATE TABLE dag_source_edges,
 -- Only original graphs are used. Graphs already stored as
 -- subgraphs are excluded via source_project_ref IS NULL.
 --
--- The JSON field authoredAtEpochSecond is used as stored.
+-- New graph captures use committedAtEpochSecond for temporal ordering.\n-- Legacy captures predate the separate timestamp fields and used authoredAtEpochSecond\n-- to store JGit's committer timestamp; COALESCE preserves their historical semantics.
 -- =========================================================
 
 INSERT INTO dag_source_commits (
@@ -125,7 +125,7 @@ SELECT
     pg.project_ref,
     node.commit_json ->> 'hash',
     to_timestamp(
-            (node.commit_json ->> 'authoredAtEpochSecond')::bigint
+            COALESCE(\n                node.commit_json ->> 'committedAtEpochSecond',\n                node.commit_json ->> 'authoredAtEpochSecond'\n            )::bigint
     ),
     CASE
         WHEN jsonb_typeof(node.commit_json -> 'parents') = 'array'
@@ -142,7 +142,7 @@ FROM project_graphs pg
 ) AS node(commit_json)
 WHERE pg.source_project_ref IS NULL
   AND node.commit_json ->> 'hash' IS NOT NULL
-  AND node.commit_json ->> 'authoredAtEpochSecond' IS NOT NULL
+  AND COALESCE(node.commit_json ->> 'committedAtEpochSecond', node.commit_json ->> 'authoredAtEpochSecond') IS NOT NULL
 ON CONFLICT (project_ref, commit_hash) DO NOTHING;
 
 
