@@ -13,7 +13,7 @@ Temporal DAG metrics and quarterly snapshot membership use the committer timesta
 
 Older graph JSON documents do not contain `committedAtEpochSecond` or graph-capture provenance. Before this change, `authoredAtEpochSecond` was populated from JGit's `RevCommit.getCommitTime()`, i.e. the committer timestamp, despite its misleading name. The quarterly snapshot SQL therefore falls back to that legacy field when the new committer field is absent.
 
-The actual author timestamp cannot be reconstructed from legacy graph JSON. Re-run repository analysis to populate it accurately. Existing `commits.authored_at` values are left operationally unchanged and continue to represent the historical committer-time value used by release-count queries.
+The actual author timestamp cannot be reconstructed from legacy graph JSON. Re-run repository analysis to populate it accurately. Existing `commits.authored_at` values are left operationally unchanged as a compatibility field. The migration `sql/migration/20261111_add_commit_timestamps.sql` adds `author_at` and `committed_at`, backfills `committed_at` from the legacy committer-time value, and leaves unrecoverable legacy `author_at` values NULL. Run this migration before deploying the application version that queries `committed_at`. New ingestions populate both columns. The quarterly DAG tables also retain `author_time` where it is available.
 
 ## Reproduction rule
 
