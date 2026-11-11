@@ -133,7 +133,7 @@ public class CommitGraphMetricsCalculator {
                 mergeCommitsIn30d,
                 mergeCommitsIn90d);
         logNodeMetrics(snapshot, metrics, loggingContext);
-        return new CommitNode(snapshot.hash(), snapshot.parents(), snapshot.committedAt().getEpochSecond(), metrics);
+        return new CommitNode(snapshot.hash(), snapshot.parents(), snapshot.authorAt().getEpochSecond(), snapshot.committedAt().getEpochSecond(), metrics);
     }
 
     private void logNodeMetrics(CommitSnapshot snapshot, CommitMetrics metrics, NodeLoggingContext context) {
@@ -504,7 +504,7 @@ public class CommitGraphMetricsCalculator {
                 continue;
             }
             if (currentSnapshot.parents().isEmpty()) {
-                memo.put(current, currentSnapshot.authoredAt());
+                memo.put(current, currentSnapshot.committedAt());
                 stack.pop();
                 continue;
             }
@@ -535,9 +535,14 @@ public class CommitGraphMetricsCalculator {
         return memo.getOrDefault(snapshot.hash(), snapshot.committedAt());
     }
 
-    public record CommitSnapshot(String hash, List<String> parents, Instant authoredAt) {
+    public record CommitSnapshot(String hash, List<String> parents, Instant authorAt, Instant committedAt) {
+        /** Legacy fixtures used one timestamp for both Git timestamps. */
+        public CommitSnapshot(String hash, List<String> parents, Instant timestamp) {
+            this(hash, parents, timestamp, timestamp);
+        }
+
         public CommitSnapshot withParents(List<String> parents) {
-            return new CommitSnapshot(hash, parents, authoredAt);
+            return new CommitSnapshot(hash, parents, authorAt, committedAt);
         }
     }
 }
