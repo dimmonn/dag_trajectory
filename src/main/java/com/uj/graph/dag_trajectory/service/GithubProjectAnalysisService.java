@@ -109,12 +109,12 @@ public class GithubProjectAnalysisService {
         GithubProjectAnalysis graph = graphStore.findByRef(projectRef)
                 .orElseThrow(() -> new IllegalArgumentException("Unknown project ref: " + projectRef));
         List<CommitGraphMetricsCalculator.CommitSnapshot> snapshots = graph.commits().stream()
-                .map(commit -> new CommitGraphMetricsCalculator.CommitSnapshot(commit.hash(), commit.parents(), Instant.ofEpochSecond(commit.authoredAtEpochSecond())))
+                .map(commit -> new CommitGraphMetricsCalculator.CommitSnapshot(commit.hash(), commit.parents(), Instant.ofEpochSecond(commit.authoredAtEpochSecond()), Instant.ofEpochSecond(commit.committedAtEpochSecond())))
                 .toList();
         List<CommitGraphMetricsCalculator.CommitSnapshot> prunedSnapshots = metricsCalculator.sliceByCutoff(snapshots, cutoffAt);
         List<CommitNode> commits = metricsCalculator.buildNodes(prunedSnapshots);
         String subgraphRef = UUID.randomUUID().toString();
-        GithubProjectAnalysis subgraph = new GithubProjectAnalysis(subgraphRef, graph.owner(), graph.name(), graph.clonedPath(), commits);
+        GithubProjectAnalysis subgraph = new GithubProjectAnalysis(subgraphRef, graph.owner(), graph.name(), graph.clonedPath(), commits, graph.defaultBranch(), graph.headSha(), graph.analyzedAtEpochSecond());
         graphStore.save(subgraph, graph.projectRef());
         long durationMillis = System.currentTimeMillis() - startedAt;
         log.info("Subgraph built and saved: subgraphRef={}, sourceProjectRef={}, originalCommits={}, subgraphCommits={}, durationMs={}",
@@ -152,7 +152,7 @@ public class GithubProjectAnalysisService {
                         commit.metrics().parentCount(),
                         commit.metrics().mergeParentCount(),
                         commit.metrics().mergeParentCount() > 0));
-        entity.setAuthoredAtEpochSecond(commit.authoredAtEpochSecond());
+        // Keep the legacy commits.authored_at column's historical operational meaning (committer time).\n        entity.setAuthoredAtEpochSecond(commit.committedAtEpochSecond());
         entity.setParentCount(commit.metrics().parentCount());
         entity.setMergeParentCount(commit.metrics().mergeParentCount());
         entity.setMerge(commit.metrics().mergeParentCount() > 0);
