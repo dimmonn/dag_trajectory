@@ -10,7 +10,7 @@ public record CommitNode(
         String hash,
         List<String> parents,
         long authoredAtEpochSecond,
-        long committedAtEpochSecond,
+        Long committedAtEpochSecond,
         CommitMetrics metrics) {
 
     /** Backward-compatible constructor for existing callers and legacy graph fixtures. */
