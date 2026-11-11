@@ -42,7 +42,7 @@ public class CommitGraphMetricsCalculator {
         }
         Map<String, CommitSnapshot> selected = new LinkedHashMap<>();
         for (CommitSnapshot snapshot : snapshots) {
-            if (!snapshot.committedAt().isAfter(cutoffAt)) {
+            if (snapshot.committedAt().isBefore(cutoffAt)) {
                 selected.put(snapshot.hash(), snapshot);
             }
         }
@@ -522,7 +522,7 @@ public class CommitGraphMetricsCalculator {
                 }
                 continue;
             }
-            Instant earliest = currentSnapshot.authoredAt();
+            Instant earliest = currentSnapshot.committedAt();
             for (String parentHash : currentSnapshot.parents()) {
                 Instant parentEarliest = memo.get(parentHash);
                 if (parentEarliest != null && parentEarliest.isBefore(earliest)) {
