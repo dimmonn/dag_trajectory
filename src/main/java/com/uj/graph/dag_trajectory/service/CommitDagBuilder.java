@@ -38,7 +38,7 @@ public class CommitDagBuilder {
         int lineStart = 0;
         while (lineStart < rawCommit.length) {
             int lineEnd = lineStart;
-            while (lineEnd < rawCommit.length && rawCommit[lineEnd] != '\\n' && rawCommit[lineEnd] != '\\r') {
+            while (lineEnd < rawCommit.length && rawCommit[lineEnd] != '\n' && rawCommit[lineEnd] != '\r') {
                 lineEnd++;
             }
             boolean matches = lineEnd - lineStart >= prefix.length;
@@ -73,7 +73,7 @@ public class CommitDagBuilder {
 
     private static int lastWhitespace(byte[] value, int start, int endExclusive) {
         for (int i = endExclusive - 1; i >= start; i--) {
-            if (value[i] == ' ' || value[i] == '\\t') {
+            if (value[i] == ' ' || value[i] == '\t') {
                 return i;
             }
         }
