@@ -109,10 +109,10 @@ class CommitDagBuilderTest {
 
     @Test
     void parsesCommitTimestampsWithoutValidatingMalformedTimezoneOffsets() {
-        byte[] rawCommit = ("tree 0123456789012345678901234567890123456789\\n"
-                + "author A <a@example.com> 1786262400 +51800\\n"
-                + "committer C <c@example.com> 1786269600 +0000\\n"
-                + "\\nmessage\\n").getBytes(java.nio.charset.StandardCharsets.US_ASCII);
+        byte[] rawCommit = ("tree 0123456789012345678901234567890123456789\n"
+                + "author A <a@example.com> 1786262400 +51800\n"
+                + "committer C <c@example.com> 1786269600 +0000\n"
+                + "\nmessage\n").getBytes(java.nio.charset.StandardCharsets.US_ASCII);
 
         assertEquals(
                 Instant.ofEpochSecond(1786262400L),
