@@ -13,6 +13,7 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class CommitDagBuilderTest {
@@ -103,6 +104,25 @@ class CommitDagBuilderTest {
         assertEquals(committerTime.getEpochSecond(), commit.committedAtEpochSecond());
         assertEquals(headHash, analysis.headSha());
         assertTrue(analysis.analyzedAtEpochSecond() > 0);
+    }
+
+
+    @Test
+    void parsesCommitTimestampsWithoutValidatingMalformedTimezoneOffsets() {
+        byte[] rawCommit = ("tree 0123456789012345678901234567890123456789\\n"
+                + "author A <a@example.com> 1786262400 +51800\\n"
+                + "committer C <c@example.com> 1786269600 +0000\\n"
+                + "\\nmessage\\n").getBytes(java.nio.charset.StandardCharsets.US_ASCII);
+
+        assertEquals(
+                Instant.ofEpochSecond(1786262400L),
+                CommitDagBuilder.parseIdentityTimestamp(rawCommit, "author"));
+        assertEquals(
+                Instant.ofEpochSecond(1786269600L),
+                CommitDagBuilder.parseIdentityTimestamp(rawCommit, "committer"));
+        assertThrows(
+                IllegalArgumentException.class,
+                () -> CommitDagBuilder.parseIdentityTimestamp(rawCommit, "tagger"));
     }
 
     private static org.eclipse.jgit.revwalk.RevCommit commitAt(Git git, Path repoDir, String message, Instant when) throws Exception {
