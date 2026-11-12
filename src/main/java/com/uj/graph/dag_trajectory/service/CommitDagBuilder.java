@@ -5,6 +5,7 @@ import com.uj.graph.dag_trajectory.model.GithubProjectAnalysis;
 import com.uj.graph.dag_trajectory.model.GithubProjectRequest;
 import java.io.IOException;
 import java.nio.file.Path;
+import java.nio.charset.StandardCharsets;
 import java.time.Instant;
 import java.util.ArrayList;
 import java.util.List;
@@ -21,6 +22,62 @@ public class CommitDagBuilder {
 
     public CommitDagBuilder(CommitGraphMetricsCalculator metricsCalculator) {
         this.metricsCalculator = metricsCalculator;
+    }
+
+
+    /**
+     * Reads the epoch-second field directly from a commit identity header.
+     *
+     * Do not use RevCommit.getAuthorIdent()/getCommitterIdent() here: PersonIdent
+     * validates the timezone offset while constructing the identity, and real-world
+     * repositories can contain malformed offsets (for example, +51800). The commit
+     * timestamp itself remains parseable and is independent of that offset.
+     */
+    static Instant parseIdentityTimestamp(byte[] rawCommit, String identityHeader) {
+        byte[] prefix = (identityHeader + " ").getBytes(StandardCharsets.US_ASCII);
+        int lineStart = 0;
+        while (lineStart < rawCommit.length) {
+            int lineEnd = lineStart;
+            while (lineEnd < rawCommit.length && rawCommit[lineEnd] != '\\n' && rawCommit[lineEnd] != '\\r') {
+                lineEnd++;
+            }
+            boolean matches = lineEnd - lineStart >= prefix.length;
+            for (int i = 0; matches && i < prefix.length; i++) {
+                matches = rawCommit[lineStart + i] == prefix[i];
+            }
+            if (matches) {
+                int timezoneSeparator = lastWhitespace(rawCommit, lineStart, lineEnd);
+                if (timezoneSeparator < 0) {
+                    break;
+                }
+                int timestampSeparator = lastWhitespace(rawCommit, lineStart, timezoneSeparator);
+                if (timestampSeparator < 0 || timestampSeparator + 1 >= timezoneSeparator) {
+                    break;
+                }
+                String epochSecond = new String(
+                        rawCommit,
+                        timestampSeparator + 1,
+                        timezoneSeparator - timestampSeparator - 1,
+                        StandardCharsets.US_ASCII);
+                try {
+                    return Instant.ofEpochSecond(Long.parseLong(epochSecond));
+                } catch (NumberFormatException e) {
+                    throw new IllegalArgumentException(
+                            "Invalid epoch-second value in Git " + identityHeader + " header: " + epochSecond, e);
+                }
+            }
+            lineStart = lineEnd + 1;
+        }
+        throw new IllegalArgumentException("Missing or invalid Git " + identityHeader + " identity header");
+    }
+
+    private static int lastWhitespace(byte[] value, int start, int endExclusive) {
+        for (int i = endExclusive - 1; i >= start; i--) {
+            if (value[i] == ' ' || value[i] == '\\t') {
+                return i;
+            }
+        }
+        return -1;
     }
 
     public GithubProjectAnalysis build(String projectRef, GithubProjectRequest project, Path clonedRepository) {
@@ -54,8 +111,8 @@ public class CommitDagBuilder {
                 snapshots.add(new CommitGraphMetricsCalculator.CommitSnapshot(
                         commit.getName(),
                         parents,
-                        commit.getAuthorIdent().getWhen().toInstant(),
-                        commit.getCommitterIdent().getWhen().toInstant()));
+                        parseIdentityTimestamp(commit.getRawBuffer(), "author"),
+                        parseIdentityTimestamp(commit.getRawBuffer(), "committer")));
             }
             List<CommitNode> commits = metricsCalculator.buildNodes(snapshots);
             return new GithubProjectAnalysis(
