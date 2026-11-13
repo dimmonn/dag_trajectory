@@ -8,6 +8,8 @@ import com.uj.graph.dag_trajectory.entity.PullRequestEntity;
 import com.uj.graph.dag_trajectory.model.GithubProjectAnalysis;
 import com.uj.graph.dag_trajectory.model.GithubProjectRequest;
 import com.uj.graph.dag_trajectory.model.SzzAnalysisResult;
+import com.uj.graph.dag_trajectory.model.SzzBatchAnalysisResult;
+import com.uj.graph.dag_trajectory.model.SzzProjectAnalysisOutcome;
 import com.uj.graph.dag_trajectory.repository.BugIntroducingCommitRepository;
 import com.uj.graph.dag_trajectory.repository.CommitPullRequestLinkRepository;
 import com.uj.graph.dag_trajectory.repository.IssueLabelRepository;
@@ -173,6 +175,38 @@ public class SzzAnalysisService {
         return new SzzAnalysisResult(projectRef, bugIssues.size(), bugIssuesMissingReportDate,
                 analyzedFixCommits, skippedNonSingleParentCommits, postReportLineAttributionsExcluded,
                 candidateHashes.size(), storedCount);
+    }
+
+    /**
+     * Runs SZZ sequentially for every root repository graph in the database.
+     * A failed project is reported but does not prevent the remaining projects
+     * from being analyzed.
+     */
+    public SzzBatchAnalysisResult analyzeAllRootProjects() {
+        List<GithubProjectAnalysis> projects = graphStore.findRootGraphs();
+        List<SzzProjectAnalysisOutcome> outcomes = new ArrayList<>();
+        int succeeded = 0;
+        int failed = 0;
+
+        for (GithubProjectAnalysis project : projects) {
+            try {
+                SzzAnalysisResult result = analyze(project.projectRef());
+                outcomes.add(new SzzProjectAnalysisOutcome(
+                        project.projectRef(), project.owner(), project.name(), true, result, null));
+                succeeded++;
+            } catch (RuntimeException e) {
+                log.error("Batch SZZ failed for projectRef={} ({}/{}); continuing with remaining projects",
+                        project.projectRef(), project.owner(), project.name(), e);
+                outcomes.add(new SzzProjectAnalysisOutcome(
+                        project.projectRef(), project.owner(), project.name(), false, null,
+                        e.getMessage() == null ? e.getClass().getSimpleName() : e.getMessage()));
+                failed++;
+            }
+        }
+
+        log.info("Batch SZZ completed: projectsFound={}, succeeded={}, failed={}",
+                projects.size(), succeeded, failed);
+        return new SzzBatchAnalysisResult(projects.size(), succeeded, failed, List.copyOf(outcomes));
     }
 
     public List<BugIntroducingCommitEntity> getResults(String projectRef) {
