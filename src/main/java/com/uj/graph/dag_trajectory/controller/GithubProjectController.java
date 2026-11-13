@@ -7,6 +7,7 @@ import com.uj.graph.dag_trajectory.model.GithubProjectGraphRefRequest;
 import com.uj.graph.dag_trajectory.model.GithubProjectRequest;
 import com.uj.graph.dag_trajectory.model.IssueLabelRefreshResult;
 import com.uj.graph.dag_trajectory.model.SzzAnalysisResult;
+import com.uj.graph.dag_trajectory.model.SzzBatchAnalysisResult;
 import com.uj.graph.dag_trajectory.service.GithubProjectAnalysisService;
 import com.uj.graph.dag_trajectory.service.SzzAnalysisService;
 import java.time.Instant;
@@ -52,6 +53,11 @@ public class GithubProjectController {
     @PostMapping("/github-projects/labels")
     public AllIssueLabelsRefreshResult refreshIssueLabelsForAllProjects() {
         return analysisService.refreshIssueLabelsForAllProjects();
+    }
+
+    @PostMapping("/github-projects/szz")
+    public SzzBatchAnalysisResult analyzeSzzForAllProjects() {
+        return szzAnalysisService.analyzeAllRootProjects();
     }
 
     @PostMapping("/github-projects/{projectRef}/szz")
