@@ -3,10 +3,11 @@ package com.uj.graph.dag_trajectory.service;
 import com.uj.graph.dag_trajectory.model.GithubProjectAnalysis;
 import com.uj.graph.dag_trajectory.model.SzzAnalysisResult;
 import java.util.List;
-import java.util.Optional;
 import org.junit.jupiter.api.Test;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.Mockito.doReturn;
 import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.mock;
@@ -41,8 +42,8 @@ class SzzBatchAnalysisTest {
         assertEquals(2, result.projectsFound());
         assertEquals(1, result.projectsSucceeded());
         assertEquals(1, result.projectsFailed());
-        assertEquals(true, result.projects().get(0).successful());
-        assertEquals(false, result.projects().get(1).successful());
+        assertTrue(result.projects().get(0).successful());
+        assertFalse(result.projects().get(1).successful());
         assertEquals("clone failed", result.projects().get(1).error());
     }
 
