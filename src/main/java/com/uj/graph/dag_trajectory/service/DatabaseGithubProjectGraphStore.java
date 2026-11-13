@@ -31,7 +31,18 @@ public class DatabaseGithubProjectGraphStore implements GithubProjectGraphStore 
         String projectRef = graph.projectRef() == null || graph.projectRef().isBlank()
                 ? UUID.randomUUID().toString()
                 : graph.projectRef();
-        repository.save(new ProjectGraphEntity(projectRef, writeGraph(new GithubProjectAnalysis(projectRef, graph.owner(), graph.name(), graph.clonedPath(), graph.commits())), sourceProjectRef));
+        repository.save(new ProjectGraphEntity(
+                projectRef,
+                writeGraph(new GithubProjectAnalysis(
+                        projectRef,
+                        graph.owner(),
+                        graph.name(),
+                        graph.clonedPath(),
+                        graph.commits(),
+                        graph.defaultBranch(),
+                        graph.headSha(),
+                        graph.analyzedAtEpochSecond())),
+                sourceProjectRef));
         return projectRef;
     }
 
