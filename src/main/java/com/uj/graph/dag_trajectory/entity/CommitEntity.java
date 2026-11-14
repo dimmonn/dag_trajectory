@@ -24,7 +24,7 @@ public class CommitEntity {
 
     // Legacy column retained for compatibility; historically populated with committer time.
     @Column(name = "authored_at")
-    private Long authoredAtEpochSecond;
+    private Long legacyCommitterAtEpochSecond;
 
     @Column(name = "author_at")
     private Long authorAtEpochSecond;
@@ -48,15 +48,15 @@ public class CommitEntity {
             String id,
             String projectRef,
             String commitHash,
-            Long authoredAtEpochSecond,
+            Long legacyCommitterAtEpochSecond,
             Integer parentCount,
             Integer mergeParentCount,
             Boolean merge) {
         this.id = id;
         this.projectRef = projectRef;
         this.commitHash = commitHash;
-        this.authoredAtEpochSecond = authoredAtEpochSecond;
-        this.committedAtEpochSecond = authoredAtEpochSecond;
+        this.legacyCommitterAtEpochSecond = legacyCommitterAtEpochSecond;
+        this.committedAtEpochSecond = legacyCommitterAtEpochSecond;
         this.parentCount = parentCount;
         this.mergeParentCount = mergeParentCount;
         this.merge = merge;
@@ -74,8 +74,8 @@ public class CommitEntity {
         return commitHash;
     }
 
-    public Long getAuthoredAtEpochSecond() {
-        return authoredAtEpochSecond;
+    public Long getLegacyCommitterAtEpochSecond() {
+        return legacyCommitterAtEpochSecond;
     }
 
     public Long getAuthorAtEpochSecond() {
@@ -106,8 +106,8 @@ public class CommitEntity {
         return merge;
     }
 
-    public void setAuthoredAtEpochSecond(Long authoredAtEpochSecond) {
-        this.authoredAtEpochSecond = authoredAtEpochSecond;
+    public void setLegacyCommitterAtEpochSecond(Long legacyCommitterAtEpochSecond) {
+        this.legacyCommitterAtEpochSecond = legacyCommitterAtEpochSecond;
     }
 
     public void setParentCount(Integer parentCount) {
