@@ -67,4 +67,30 @@ class CommitGraphMetricsCalculatorTest {
         assertEquals(List.of("before"), sliced.stream().map(CommitGraphMetricsCalculator.CommitSnapshot::hash).toList());
     }
 
+    @Test
+    void recomputesDescendantAndBranchMetricsUsingOnlyCommitsBeforeCutoff() {
+        var calculator = new CommitGraphMetricsCalculator();
+        var t0 = Instant.parse("2026-01-01T00:00:00Z");
+        var t1 = Instant.parse("2026-01-02T00:00:00Z");
+        var t2 = Instant.parse("2026-01-03T00:00:00Z");
+        var t3 = Instant.parse("2026-01-04T00:00:00Z");
+        var snapshots = List.of(
+                new CommitGraphMetricsCalculator.CommitSnapshot("root", List.of(), t0, t0),
+                new CommitGraphMetricsCalculator.CommitSnapshot("historical-child", List.of("root"), t1, t1),
+                new CommitGraphMetricsCalculator.CommitSnapshot("future-child", List.of("root"), t2, t2),
+                new CommitGraphMetricsCalculator.CommitSnapshot("future-descendant", List.of("future-child"), t3, t3));
+
+        var historical = calculator.sliceByCutoff(snapshots, t2);
+        var nodes = calculator.buildNodes(historical);
+        var root = nodes.stream().filter(node -> node.hash().equals("root")).findFirst().orElseThrow();
+
+        assertEquals(List.of("root", "historical-child"), nodes.stream().map(node -> node.hash()).toList());
+        assertEquals(1, root.metrics().childCount());
+        assertEquals(1, root.metrics().descendantCount());
+        assertEquals(2, root.metrics().subtreeSize());
+        assertEquals(false, root.metrics().branchPoint());
+        assertEquals(86_400L, root.metrics().childLagSeconds());
+        assertEquals(86_400L, root.metrics().branchLifetimeSeconds());
+    }
+
 }
