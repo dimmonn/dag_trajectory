@@ -11,114 +11,48 @@ import jakarta.persistence.UniqueConstraint;
         name = "commits",
         uniqueConstraints = @UniqueConstraint(name = "uk_commit_project_hash", columnNames = {"project_ref", "commit_hash"}))
 public class CommitEntity {
-
     @Id
     @Column(name = "id", nullable = false, updatable = false)
     private String id;
-
     @Column(name = "project_ref", nullable = false)
     private String projectRef;
-
     @Column(name = "commit_hash", nullable = false)
     private String commitHash;
-
-    // Legacy column retained for compatibility; historically populated with committer time.
-    @Column(name = "authored_at")
-    private Long legacyCommitterAtEpochSecond;
-
     @Column(name = "author_at")
     private Long authorAtEpochSecond;
-
     @Column(name = "committed_at")
     private Long committedAtEpochSecond;
-
     @Column(name = "parent_count")
     private Integer parentCount;
-
     @Column(name = "merge_parent_count")
     private Integer mergeParentCount;
-
     @Column(name = "is_merge")
     private Boolean merge;
 
-    protected CommitEntity() {
-    }
+    protected CommitEntity() {}
 
-    public CommitEntity(
-            String id,
-            String projectRef,
-            String commitHash,
-            Long legacyCommitterAtEpochSecond,
-            Integer parentCount,
-            Integer mergeParentCount,
-            Boolean merge) {
+    public CommitEntity(String id, String projectRef, String commitHash, Long committedAtEpochSecond,
+                        Integer parentCount, Integer mergeParentCount, Boolean merge) {
         this.id = id;
         this.projectRef = projectRef;
         this.commitHash = commitHash;
-        this.legacyCommitterAtEpochSecond = legacyCommitterAtEpochSecond;
-        this.committedAtEpochSecond = legacyCommitterAtEpochSecond;
-        this.parentCount = parentCount;
-        this.mergeParentCount = mergeParentCount;
-        this.merge = merge;
-    }
-
-    public String getId() {
-        return id;
-    }
-
-    public String getProjectRef() {
-        return projectRef;
-    }
-
-    public String getCommitHash() {
-        return commitHash;
-    }
-
-    public Long getLegacyCommitterAtEpochSecond() {
-        return legacyCommitterAtEpochSecond;
-    }
-
-    public Long getAuthorAtEpochSecond() {
-        return authorAtEpochSecond;
-    }
-
-    public Long getCommittedAtEpochSecond() {
-        return committedAtEpochSecond;
-    }
-
-    public void setAuthorAtEpochSecond(Long authorAtEpochSecond) {
-        this.authorAtEpochSecond = authorAtEpochSecond;
-    }
-
-    public void setCommittedAtEpochSecond(Long committedAtEpochSecond) {
         this.committedAtEpochSecond = committedAtEpochSecond;
-    }
-
-    public Integer getParentCount() {
-        return parentCount;
-    }
-
-    public Integer getMergeParentCount() {
-        return mergeParentCount;
-    }
-
-    public Boolean getMerge() {
-        return merge;
-    }
-
-    public void setLegacyCommitterAtEpochSecond(Long legacyCommitterAtEpochSecond) {
-        this.legacyCommitterAtEpochSecond = legacyCommitterAtEpochSecond;
-    }
-
-    public void setParentCount(Integer parentCount) {
         this.parentCount = parentCount;
-    }
-
-    public void setMergeParentCount(Integer mergeParentCount) {
         this.mergeParentCount = mergeParentCount;
-    }
-
-    public void setMerge(Boolean merge) {
         this.merge = merge;
     }
+
+    public String getId() { return id; }
+    public String getProjectRef() { return projectRef; }
+    public String getCommitHash() { return commitHash; }
+    public Long getAuthorAtEpochSecond() { return authorAtEpochSecond; }
+    public Long getCommittedAtEpochSecond() { return committedAtEpochSecond; }
+    public void setAuthorAtEpochSecond(Long value) { this.authorAtEpochSecond = value; }
+    public void setCommittedAtEpochSecond(Long value) { this.committedAtEpochSecond = value; }
+    public Integer getParentCount() { return parentCount; }
+    public Integer getMergeParentCount() { return mergeParentCount; }
+    public Boolean getMerge() { return merge; }
+    public void setParentCount(Integer value) { this.parentCount = value; }
+    public void setMergeParentCount(Integer value) { this.mergeParentCount = value; }
+    public void setMerge(Boolean value) { this.merge = value; }
 }

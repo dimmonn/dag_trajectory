@@ -11,9 +11,9 @@ Temporal DAG metrics and quarterly snapshot membership use the committer timesta
 
 ## Backward compatibility
 
-Older graph JSON documents do not contain `committedAtEpochSecond` or graph-capture provenance. Before this change, `authoredAtEpochSecond` was populated from JGit's `RevCommit.getCommitTime()`, i.e. the committer timestamp, despite its misleading name. The quarterly snapshot SQL therefore falls back to that legacy field when the new committer field is absent.
+Older graph JSON documents do not contain `committedAtEpochSecond` or graph-capture provenance. Before this change, `authoredAtEpochSecond` was populated from JGit's `RevCommit.getCommitTime()`, i.e. the committer timestamp, despite its misleading name. The quarterly snapshot SQL therefore falls back to that legacy graph-JSON field only when the new committer field is absent.
 
-The actual author timestamp cannot be reconstructed from legacy graph JSON. Re-run repository analysis to populate it accurately. Existing `commits.authored_at` values are left operationally unchanged as a compatibility field. The migration `sql/migration/20261111_add_commit_timestamps.sql` adds `author_at` and `committed_at`, backfills `committed_at` from the legacy committer-time value, and leaves unrecoverable legacy `author_at` values NULL. Run this migration before deploying the application version that queries `committed_at`. New ingestions populate both columns. The quarterly DAG tables also retain `author_time` where it is available.
+The relational `commits.authored_at` column is removed. Migration `sql/migration/20261115_drop_legacy_authored_at.sql` first copies its historical committer-time values into `committed_at` where that value is missing, then drops the column. `author_at` remains the author timestamp and `committed_at` remains the committer timestamp. Existing graph JSON is not rewritten by this migration; re-ingest repositories to populate genuine author timestamps in historical records where they were previously unavailable.
 
 ## Reproduction rule
 
