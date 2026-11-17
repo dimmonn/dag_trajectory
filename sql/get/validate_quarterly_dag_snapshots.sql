@@ -51,3 +51,38 @@ LEFT JOIN dag_snapshot_edges se
  AND se.parent_hash = e.parent_hash
  AND se.child_hash = e.child_hash
 WHERE se.parent_hash IS NULL;
+
+
+-- 6. Run AFTER extract_quarterly_dag_advanced_features.sql.
+-- Every snapshot depth must be recalculated from its own induced edges,
+-- and must contain exactly one depth observation per snapshot commit.
+SELECT
+    project_ref,
+    quarter_start,
+    commit_count,
+    depth_observation_count,
+    depth_max,
+    depth_valid,
+    depth_method
+FROM public.dag_snapshot_advanced_features
+WHERE depth_method IS DISTINCT FROM 'snapshot_recomputed'
+   OR depth_observation_count <> commit_count
+   OR NOT depth_valid
+   OR (commit_count > 0 AND depth_max >= commit_count);
+
+-- 7. Advanced feature table must contain exactly one row per DAG snapshot.
+SELECT
+    s.snapshot_id,
+    s.project_ref,
+    s.quarter_start
+FROM public.dag_snapshots s
+LEFT JOIN public.dag_snapshot_advanced_features f
+  ON f.snapshot_id = s.snapshot_id
+WHERE f.snapshot_id IS NULL;
+
+-- 8. PR cycle-time summaries must not count negative durations as valid
+-- observations; those are reported separately as anomalies.
+SELECT *
+FROM public.dag_snapshot_advanced_features
+WHERE pr_cycle_time_observation_count < 0
+   OR pr_cycle_time_negative_count < 0;

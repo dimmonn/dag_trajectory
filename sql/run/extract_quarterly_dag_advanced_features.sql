@@ -1,7 +1,7 @@
 -- =========================================================
 -- Rebuild quarterly DAG advanced features
 --
--- 1. Snapshot-local graph depth
+-- 1. Snapshot-local graph depth (always recomputed from snapshot edges)
 -- 2. Direct-child time spread
 -- 3. Second-parent timestamp difference (diagnostic)
 -- 4. Pull-request cycle time
@@ -9,8 +9,6 @@
 -- Uses existing DAG snapshot and GitHub metadata tables.
 -- Does not modify original ingestion tables.
 -- =========================================================
-
-ROLLBACK;
 
 BEGIN;
 
@@ -70,44 +68,7 @@ CREATE INDEX IF NOT EXISTS idx_dag_advanced_features_project_quarter
 
 
 -- =========================================================
--- 2. Extract original graph-depth values from graph JSON
--- =========================================================
-
-CREATE TEMP TABLE tmp_source_commit_depth
-    ON COMMIT DROP
-AS
-SELECT
-    pg.project_ref,
-    n.node_json ->> 'hash' AS commit_hash,
-
-    CASE
-        WHEN COALESCE(
-                     n.node_json -> 'metrics' ->> 'graphDepth', ''
-             ) ~ '^[0-9]+$'
-            THEN (n.node_json -> 'metrics' ->> 'graphDepth')::integer
-        ELSE NULL
-        END AS graph_depth
-
-FROM public.project_graphs pg
-
-         CROSS JOIN LATERAL jsonb_array_elements(
-        CASE
-            WHEN jsonb_typeof(pg.graph_json::jsonb -> 'commits') = 'array'
-                THEN pg.graph_json::jsonb -> 'commits'
-            ELSE '[]'::jsonb
-            END
-                            ) AS n(node_json)
-
-WHERE pg.source_project_ref IS NULL
-  AND n.node_json ->> 'hash' IS NOT NULL;
-
-
-CREATE UNIQUE INDEX tmp_source_commit_depth_uidx
-    ON tmp_source_commit_depth(project_ref, commit_hash);
-
-
--- =========================================================
--- 3. Identify parent edges excluded from quarterly snapshots
+-- 2. Count source parent edges omitted from each snapshot
 -- =========================================================
 
 CREATE TEMP TABLE tmp_excluded_parent_counts
@@ -116,120 +77,48 @@ AS
 SELECT
     child.snapshot_id,
     COUNT(*)::bigint AS excluded_parent_edges
-
 FROM public.dag_snapshot_commits child
-
-         JOIN public.dag_snapshots s
-              ON s.snapshot_id = child.snapshot_id
-
-         JOIN public.dag_source_edges e
-              ON e.project_ref = s.project_ref
-                  AND e.child_hash = child.commit_hash
-
-         LEFT JOIN public.dag_snapshot_commits parent
-                   ON parent.snapshot_id = child.snapshot_id
-                       AND parent.commit_hash = e.parent_hash
-
+JOIN public.dag_snapshots s
+  ON s.snapshot_id = child.snapshot_id
+JOIN public.dag_source_edges e
+  ON e.project_ref = s.project_ref
+ AND e.child_hash = child.commit_hash
+LEFT JOIN public.dag_snapshot_commits parent
+  ON parent.snapshot_id = child.snapshot_id
+ AND parent.commit_hash = e.parent_hash
 WHERE parent.commit_hash IS NULL
-
 GROUP BY child.snapshot_id;
-
 
 CREATE UNIQUE INDEX tmp_excluded_parent_counts_uidx
     ON tmp_excluded_parent_counts(snapshot_id);
 
 
 -- =========================================================
--- 4. Identify snapshots requiring depth recalculation
+-- 3. Recompute depth for EVERY snapshot
 --
--- Recalculate when:
--- - a parent edge was excluded; or
--- - original graph depth is missing for any commit.
+-- Full-capture graphDepth is never safe to reuse: descendants
+-- outside a historical cutoff can change a node's depth.
 -- =========================================================
 
 CREATE TEMP TABLE tmp_depth_recalc_snapshots
     ON COMMIT DROP
 AS
-WITH source_counts AS (
-    SELECT
-        c.snapshot_id,
-        COUNT(d.graph_depth)::bigint AS available_depths
-
-    FROM public.dag_snapshot_commits c
-
-             JOIN public.dag_snapshots s
-                  ON s.snapshot_id = c.snapshot_id
-
-             LEFT JOIN tmp_source_commit_depth d
-                       ON d.project_ref = s.project_ref
-                           AND d.commit_hash = c.commit_hash
-
-    GROUP BY c.snapshot_id
-)
-
-SELECT
-    s.snapshot_id
-
-FROM public.dag_snapshots s
-
-         LEFT JOIN tmp_excluded_parent_counts e
-                   ON e.snapshot_id = s.snapshot_id
-
-         LEFT JOIN source_counts d
-                   ON d.snapshot_id = s.snapshot_id
-
-WHERE COALESCE(e.excluded_parent_edges, 0) > 0
-   OR COALESCE(d.available_depths, 0) <> s.commit_count;
-
+SELECT snapshot_id
+FROM public.dag_snapshots;
 
 CREATE UNIQUE INDEX tmp_depth_recalc_snapshots_uidx
     ON tmp_depth_recalc_snapshots(snapshot_id);
 
-
--- =========================================================
--- 5. Prepare snapshot-local depth values
---
--- Unaffected snapshots reuse original graph depth.
--- =========================================================
-
 CREATE TEMP TABLE tmp_snapshot_node_depth (
-                                              snapshot_id bigint NOT NULL,
-                                              commit_hash text NOT NULL,
-                                              depth integer NOT NULL,
-                                              PRIMARY KEY (snapshot_id, commit_hash)
-)
-    ON COMMIT DROP;
-
-
-INSERT INTO tmp_snapshot_node_depth (
-    snapshot_id,
-    commit_hash,
-    depth
-)
-SELECT
-    c.snapshot_id,
-    c.commit_hash,
-    d.graph_depth
-
-FROM public.dag_snapshot_commits c
-
-         JOIN public.dag_snapshots s
-              ON s.snapshot_id = c.snapshot_id
-
-         JOIN tmp_source_commit_depth d
-              ON d.project_ref = s.project_ref
-                  AND d.commit_hash = c.commit_hash
-
-WHERE NOT EXISTS (
-    SELECT 1
-    FROM tmp_depth_recalc_snapshots r
-    WHERE r.snapshot_id = c.snapshot_id
-)
-  AND d.graph_depth IS NOT NULL;
+    snapshot_id bigint NOT NULL,
+    commit_hash text NOT NULL,
+    depth integer NOT NULL,
+    PRIMARY KEY (snapshot_id, commit_hash)
+) ON COMMIT DROP;
 
 
 -- =========================================================
--- 6. Recalculate depth using an incremental topological queue
+-- 4. Recalculate depth using an incremental topological queue
 --
 -- Root depth = 0.
 -- Child depth = maximum parent depth + 1.
@@ -435,7 +324,7 @@ DO $depth_recalc$
             END LOOP;
 
 
-        -- If any node remains unresolved, the graph contains
+            -- If any node remains unresolved, the graph contains
         -- a cycle or an inconsistent parent-edge structure.
 
         SELECT COUNT(*)
@@ -491,7 +380,7 @@ FROM tmp_recalculated_depth;
 
 
 -- =========================================================
--- 7. Calculate depth distributions
+-- 5. Calculate depth distributions
 -- =========================================================
 
 CREATE TEMP TABLE tmp_depth_stats
@@ -524,7 +413,7 @@ GROUP BY snapshot_id;
 
 
 -- =========================================================
--- 8. Calculate direct-child time spread
+-- 6. Calculate direct-child time spread
 --
 -- Difference between earliest and latest direct child
 -- commit timestamps of each branching commit.
@@ -585,7 +474,7 @@ GROUP BY snapshot_id;
 
 
 -- =========================================================
--- 9. Count merge commits
+-- 7. Count merge commits
 -- =========================================================
 
 CREATE TEMP TABLE tmp_merge_counts
@@ -604,7 +493,7 @@ GROUP BY snapshot_id;
 
 
 -- =========================================================
--- 10. Calculate second-parent timestamp differences
+-- 8. Calculate second-parent timestamp differences
 --
 -- Diagnostic only:
 -- merge commit timestamp - second-parent timestamp.
@@ -675,11 +564,12 @@ GROUP BY snapshot_id;
 
 
 -- =========================================================
--- 11. Calculate PR cycle time
+-- 9. Calculate PR cycle time
 --
 -- PR cycle time = merged_at - created_at.
 --
--- Include PRs merged during the snapshot quarter.
+-- created_at and merged_at are Unix epoch seconds (Long in PullRequestEntity).
+-- Include PRs merged during the snapshot quarter using epoch-second bounds.
 -- Count each PR only once per snapshot.
 --
 -- Negative values are retained for anomaly counting.
@@ -714,10 +604,9 @@ FROM public.dag_snapshots s
 WHERE pr.created_at IS NOT NULL
   AND pr.merged_at IS NOT NULL
 
-  AND to_timestamp(pr.merged_at) >=
-      (s.quarter_start::timestamp AT TIME ZONE 'UTC')
-
-  AND to_timestamp(pr.merged_at) < s.cutoff_at;
+  AND pr.merged_at >= EXTRACT(EPOCH FROM
+      (s.quarter_start::timestamp AT TIME ZONE 'UTC'))::bigint
+  AND pr.merged_at < EXTRACT(EPOCH FROM s.cutoff_at)::bigint;
 
 
 CREATE TEMP TABLE tmp_pr_cycle_stats
@@ -752,7 +641,7 @@ GROUP BY snapshot_id;
 
 
 -- =========================================================
--- 12. Rebuild the advanced feature table
+-- 10. Rebuild the advanced feature table
 -- =========================================================
 
 TRUNCATE TABLE public.dag_snapshot_advanced_features;
@@ -812,14 +701,10 @@ SELECT
 
     (
         COALESCE(d.observation_count, 0) = s.commit_count
-            AND COALESCE(d.depth_max, 0) < s.commit_count
+            AND (s.commit_count = 0 OR d.depth_max < s.commit_count)
         ),
 
-    CASE
-        WHEN r.snapshot_id IS NOT NULL
-            THEN 'snapshot_recomputed'
-        ELSE 'original_graph_metric'
-        END,
+    'snapshot_recomputed',
 
     COALESCE(b.branch_point_count, 0),
     COALESCE(b.observation_count, 0),
@@ -848,9 +733,6 @@ FROM public.dag_snapshots s
          LEFT JOIN tmp_excluded_parent_counts e
                    ON e.snapshot_id = s.snapshot_id
 
-         LEFT JOIN tmp_depth_recalc_snapshots r
-                   ON r.snapshot_id = s.snapshot_id
-
          LEFT JOIN tmp_branch_stats b
                    ON b.snapshot_id = s.snapshot_id
 
@@ -868,7 +750,7 @@ COMMIT;
 
 
 -- =========================================================
--- 13. Validate the result
+-- 11. Validate the result
 -- =========================================================
 
 SELECT
