@@ -118,7 +118,7 @@ CREATE TEMP TABLE tmp_snapshot_node_depth (
 
 
 -- =========================================================
--- 6. Recalculate depth using an incremental topological queue
+-- 4. Recalculate depth using an incremental topological queue
 --
 -- Root depth = 0.
 -- Child depth = maximum parent depth + 1.
@@ -380,7 +380,7 @@ FROM tmp_recalculated_depth;
 
 
 -- =========================================================
--- 7. Calculate depth distributions
+-- 5. Calculate depth distributions
 -- =========================================================
 
 CREATE TEMP TABLE tmp_depth_stats
@@ -413,7 +413,7 @@ GROUP BY snapshot_id;
 
 
 -- =========================================================
--- 8. Calculate direct-child time spread
+-- 6. Calculate direct-child time spread
 --
 -- Difference between earliest and latest direct child
 -- commit timestamps of each branching commit.
@@ -474,7 +474,7 @@ GROUP BY snapshot_id;
 
 
 -- =========================================================
--- 9. Count merge commits
+-- 7. Count merge commits
 -- =========================================================
 
 CREATE TEMP TABLE tmp_merge_counts
@@ -493,7 +493,7 @@ GROUP BY snapshot_id;
 
 
 -- =========================================================
--- 10. Calculate second-parent timestamp differences
+-- 8. Calculate second-parent timestamp differences
 --
 -- Diagnostic only:
 -- merge commit timestamp - second-parent timestamp.
@@ -564,7 +564,7 @@ GROUP BY snapshot_id;
 
 
 -- =========================================================
--- 11. Calculate PR cycle time
+-- 9. Calculate PR cycle time
 --
 -- PR cycle time = merged_at - created_at.
 --
@@ -641,7 +641,7 @@ GROUP BY snapshot_id;
 
 
 -- =========================================================
--- 12. Rebuild the advanced feature table
+-- 10. Rebuild the advanced feature table
 -- =========================================================
 
 TRUNCATE TABLE public.dag_snapshot_advanced_features;
@@ -733,9 +733,6 @@ FROM public.dag_snapshots s
          LEFT JOIN tmp_excluded_parent_counts e
                    ON e.snapshot_id = s.snapshot_id
 
-         LEFT JOIN tmp_depth_recalc_snapshots r
-                   ON r.snapshot_id = s.snapshot_id
-
          LEFT JOIN tmp_branch_stats b
                    ON b.snapshot_id = s.snapshot_id
 
@@ -753,7 +750,7 @@ COMMIT;
 
 
 -- =========================================================
--- 13. Validate the result
+-- 11. Validate the result
 -- =========================================================
 
 SELECT
